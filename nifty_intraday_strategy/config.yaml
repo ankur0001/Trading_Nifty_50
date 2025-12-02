@@ -1,0 +1,64 @@
+# Backtest Configuration
+
+# Capital
+initial_capital: 1000  # Initial capital in ₹
+risk_per_trade: 0.005     # Risk 0.5% of equity per trade
+
+# Strategy Parameters
+n_or: 15                  # Opening range period in minutes
+atr_period: 14            # ATR calculation period
+atr_mult: 1.5             # ATR multiplier for stop loss
+
+# Trading Hours
+start_time: "09:15"       # Market open time
+end_time: "15:15"         # Market close time (exit all positions)
+
+# Trade Limits
+max_trades_per_day: 1     # Maximum number of trades per day
+
+# Execution Costs
+slippage: 0.00015         # Slippage (0.015%)
+commission: 0.0003        # Commission per side (0.03%)
+
+# Enhanced Strategy Features
+use_candlestick: true     # Use candlestick patterns
+use_indicators: true      # Use technical indicators
+use_chart_patterns: false # Use chart patterns (SLOW - set to false for faster runs)
+use_price_action: true    # Use price action tools
+use_volatility: true      # Use volatility measures
+use_multiple_timeframe: true  # Use multiple timeframe analysis
+
+# Caching (speeds up reruns with same data/parameters)
+use_cache: true           # Enable caching of calculated indicators
+cache_dir: "cache"        # Directory to store cache files
+
+# Output Options
+generate_plots: true      # Generate and display plots (equity curve, PnL histogram)
+save_results: true        # Save results to CSV/JSON files
+
+# Indicator Parameters
+rsi_oversold: 30          # RSI oversold level
+rsi_overbought: 70        # RSI overbought level
+macd_threshold: 0         # MACD threshold
+
+# Multiple Timeframe Settings
+mtf_timeframes:          # Timeframes for multi-timeframe analysis
+  - "15min"
+  - "1H"
+  - "1D"
+
+# Chart Pattern Parameters
+pattern_tolerance: 0.02   # Price tolerance for pattern matching (2%)
+pattern_min_distance: 10 # Minimum distance between pattern points
+pattern_max_lookback: 500 # Maximum bars to look back (for performance, reduces from O(n²) to O(n))
+
+# Price Action Parameters
+fib_period: 20            # Period for Fibonacci retracement
+sr_window: 20             # Window for support/resistance
+sr_tolerance: 0.01        # Tolerance for support/resistance levels
+
+# Volatility Parameters
+volatility_period: 20     # Period for volatility calculation
+vol_short: 10            # Short period for volatility ratio
+vol_long: 20             # Long period for volatility ratio
+
