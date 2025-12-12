@@ -1,0 +1,30 @@
+<!-- templates/index.html -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Advanced Candlestick Chart</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/lightweight-charts@4.0.1/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+  <header>
+    <h2>Advanced Candlestick Chart</h2>
+  </header>
+
+  <div id="controls">
+    <label>Start:
+      <input id="start" type="datetime-local">
+    </label>
+    <label>End:
+      <input id="end" type="datetime-local">
+    </label>
+    <button id="btnLoad">Load Range</button>
+    <button id="btnLatest">Load Latest</button>
+  </div>
+
+  <div id="chart"></div>
+
+  <script src="/static/chart.js"></script>
+</body>
+</html>
