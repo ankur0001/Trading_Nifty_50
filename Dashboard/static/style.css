@@ -192,3 +192,7 @@ body.fullscreen-mode #chart-main {
 button {
     cursor: pointer
 }
+
+.lightweight-charts-tooltip {
+    font-size: 12px;
+}

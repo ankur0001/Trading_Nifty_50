@@ -21,7 +21,7 @@ let loading = false;
 
 // toggles/options
 const opts = {
-  sma20: true, sma50: true, ema12: true, bb: true, pacePro: true, rsi: true, macd: true
+  sma20: true, sma50: true, ema12: true, bb: true, pacePro: true, rsi: true, macd: true, signals: true
 };
 
 // indicator colors (auto-assigned non-conflicting)
@@ -270,6 +270,48 @@ function calculateIndicators(candles) {
   return { sma20, sma50, ema12, bbUpper, bbMiddle: bbMid, bbLower, paceNorm, rsi, macdLine, macdSignal, macdHist };
 }
 
+function calculateTradeSignals(candles, indicators) {
+  const markers = [];
+
+  for (let i = 1; i < candles.length; i++) {
+    const ema = indicators.ema12;
+    const sma = indicators.sma20;
+    const rsi = indicators.rsi;
+
+    if (
+      ema[i] && sma[i] &&
+      ema[i - 1] <= sma[i - 1] &&
+      ema[i] > sma[i] &&
+      rsi[i] > 40
+    ) {
+      markers.push({
+        time: candles[i].time,
+        position: 'belowBar',
+        color: '#2ECC71',
+        shape: 'arrowUp',
+        text: 'BUY'
+      });
+    }
+
+    if (
+      ema[i] && sma[i] &&
+      ema[i - 1] >= sma[i - 1] &&
+      ema[i] < sma[i] &&
+      rsi[i] < 60
+    ) {
+      markers.push({
+        time: candles[i].time,
+        position: 'aboveBar',
+        color: '#E74C3C',
+        shape: 'arrowDown',
+        text: 'SELL'
+      });
+    }
+  }
+  return markers;
+}
+
+
 // -------------------- apply indicator data to series --------------------
 function updateAllIndicatorSeries() {
   const indicators = calculateIndicators(allCandles);
@@ -340,6 +382,16 @@ function updateAllIndicatorSeries() {
   } else {
     macdSeries.setData([]); macdSignalSeries.setData([]); macdHistSeries.setData([]);
   }
+
+  // ----- BUY / SELL ALERTS -----
+  if (opts.signals) {
+    const indicators = calculateIndicators(allCandles);
+    const tradeSignals = calculateTradeSignals(allCandles, indicators);
+    candleSeries.setMarkers(tradeSignals);
+  } else {
+    candleSeries.setMarkers([]);
+  }
+
 
   // after updating, resize charts to ensure proper rendering
   scheduleResizeCharts();
@@ -450,7 +502,8 @@ async function initUI() {
   document.getElementById('toggle-ema12').addEventListener('change', e => { opts.ema12 = e.target.checked; updateAllIndicatorSeries(); });
   document.getElementById('toggle-bb').addEventListener('change', e => { opts.bb = e.target.checked; updateAllIndicatorSeries(); });
   document.getElementById('paceproToggle').addEventListener('change', e => { opts.pacePro = e.target.checked; updateAllIndicatorSeries(); });
-
+  document.getElementById('toggle-signals').addEventListener('change', e => { opts.signals = e.target.checked; updateAllIndicatorSeries(); });
+  
   document.getElementById('toggle-rsi').addEventListener('change', e => {
     opts.rsi = e.target.checked;
     document.body.classList.remove('fullscreen-mode'); // ensure normal view for toggling
