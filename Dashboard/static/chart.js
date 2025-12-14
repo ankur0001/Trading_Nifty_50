@@ -499,23 +499,6 @@ function setIndicatorBadges() {
   set('badge-macd', COLORS.macd);
 }
 
-function applyIndicatorColors() {
-  document.querySelectorAll('.badge[data-color]').forEach(badge => {
-    const key = badge.dataset.color;
-
-    // Map special cases
-    if (key === 'signals') {
-      badge.style.backgroundColor = COLORS.pacePos;
-      return;
-    }
-
-    if (COLORS[key]) {
-      badge.style.backgroundColor = COLORS[key];
-    }
-  });
-}
-
-
 async function initUI() {
     // ---- header elements ----
   rangeBtn = document.getElementById('rangeBtn');
@@ -661,7 +644,6 @@ async function initUI() {
     // when toggling fullscreen, re-calc sizes
     scheduleResizeCharts();
   });
-  applyIndicatorColors();
   // when window resizes, resize charts
   window.addEventListener('resize', () => scheduleResizeCharts());
 }
