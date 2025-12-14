@@ -21,7 +21,10 @@ body {
 
 body {
     display: flex;
-    overflow: hidden
+    flex-direction: column;
+    /* 🔥 THIS IS THE FIX */
+    height: 100vh;
+    overflow: hidden;
 }
 
 /* sidebar */
@@ -115,14 +118,14 @@ body {
     min-width: 0
 }
 
-#chart-area {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 12px;
-    overflow: hidden
+.chart-panel {
+    flex-shrink: 0;
 }
+
+/* .chart-panel.hidden {
+    display: none !important;
+    /* 🔥 completely removed from layout *//*
+} */
 
 /* chart boxes */
 .chart-box {
@@ -195,4 +198,188 @@ button {
 
 .lightweight-charts-tooltip {
     font-size: 12px;
+}
+
+.chart-header {
+    height: 44px;
+    background: #fff;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    font-size: 14px;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.title {
+    font-weight: 700;
+    color: #111;
+}
+
+.header-btn {
+    background: none;
+    border: 1px solid #ddd;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.status-btn {
+    border: 1px solid #ddd;
+    background: #fff;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.status-btn.active {
+    font-weight: 700;
+    color: #1565C0;
+}
+
+.dropdown {
+  position: relative;
+}
+
+.dropdown-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: auto;
+  margin-top: 0;
+  display: none;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 10px;
+  min-width: 220px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.12);
+  z-index: 100;
+}
+
+.dropdown:hover .dropdown-panel,
+.dropdown-panel:hover {
+  display: block;
+}
+
+
+
+.section label {
+    display: block;
+    margin-bottom: 6px;
+}
+
+.divider {
+    height: 1px;
+    background: #eee;
+    margin: 8px 0;
+}
+
+.floating-panel {
+    position: fixed;
+    top: 56px;
+    right: 16px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 12px;
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.14);
+    z-index: 200;
+}
+
+.hidden {
+    display: none;
+}
+
+.replay-actions {
+    margin-top: 10px;
+    display: flex;
+    gap: 6px;
+}
+
+.header-btn:hover,
+.status-btn:hover {
+    background: #f5f5f5;
+}
+
+
+#chart-area {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+#chart-main {
+    flex: 1 1 auto;
+    height: 0;
+    /* JS will control this */
+    min-height: 200px;
+}
+
+#chart-rsi,
+#chart-macd {
+    flex : 0 0 160px;
+}
+
+.chart-panel.hidden {
+    display: none !important;
+}
+
+/* indicator colors – MUST match chart series colors */
+.badge.sma20 {
+    background: #1E88E5;
+}
+
+.badge.sma50 {
+    background: #6A1B9A;
+}
+
+.badge.ema12 {
+    background: #00ACC1;
+}
+
+.badge.bb {
+    background: #9E9E9E;
+}
+
+.badge.pacepro {
+    background: #00897b;
+}
+
+.badge.rsi {
+    background: #2962ff;
+}
+
+.badge.macd {
+    background: #ff6d00;
+}
+
+.badge.signals {
+    background: #2e7d32;
+}
+
+.section label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.section input:not(:checked)~.badge,
+.section input:not(:checked)+span {
+    opacity: 0.4;
 }

@@ -19,10 +19,30 @@ let loadedMin = null;
 let loadedMax = null;
 let loading = false;
 
+// ---- Replay state ----
+let replayMode = false;
+let replayTimer = null;
+let replayIndex = 0;
+let replayCandles = [];
+const INDICATOR_HEIGHT = 160;
+const MAIN_MIN_HEIGHT = 200;   // 🔥 critical
+
+
+
+const panelHeights = {
+  rsi: null,
+  macd: null
+};
+
+
 // toggles/options
 const opts = {
   sma20: true, sma50: true, ema12: true, bb: true, pacePro: true, rsi: true, macd: true, signals: true
 };
+
+// ---- Header UI elements ----
+let rangeBtn, replayBtn;
+let rangePanel, replayPanel;
 
 // indicator colors (auto-assigned non-conflicting)
 const COLORS = {
@@ -311,7 +331,6 @@ function calculateTradeSignals(candles, indicators) {
   return markers;
 }
 
-
 // -------------------- apply indicator data to series --------------------
 function updateAllIndicatorSeries() {
   const indicators = calculateIndicators(allCandles);
@@ -480,7 +499,43 @@ function setIndicatorBadges() {
   set('badge-macd', COLORS.macd);
 }
 
+function applyIndicatorColors() {
+  document.querySelectorAll('.badge[data-color]').forEach(badge => {
+    const key = badge.dataset.color;
+
+    // Map special cases
+    if (key === 'signals') {
+      badge.style.backgroundColor = COLORS.pacePos;
+      return;
+    }
+
+    if (COLORS[key]) {
+      badge.style.backgroundColor = COLORS[key];
+    }
+  });
+}
+
+
 async function initUI() {
+    // ---- header elements ----
+  rangeBtn = document.getElementById('rangeBtn');
+  replayBtn = document.getElementById('replayBtn');
+  rangePanel = document.getElementById('rangePanel');
+  replayPanel = document.getElementById('replayPanel');
+  const rsiContainer = document.getElementById('chart-rsi');
+  const macdContainer = document.getElementById('chart-macd');
+
+
+  rangeBtn.onclick = () => {
+    rangePanel.classList.toggle('hidden');
+    replayPanel.classList.add('hidden');
+  };
+
+  replayBtn.onclick = () => {
+    replayPanel.classList.toggle('hidden');
+    rangePanel.classList.add('hidden');
+  };
+
   const info = await fetch('/data-info').then(r => r.json());
   window.DATA_MIN_TS = info.min_ts;
   window.DATA_MAX_TS = info.max_ts;
@@ -493,8 +548,21 @@ async function initUI() {
   const defaultStart = new Date((info.max_ts - 24 * 3600) * 1000);
   startEl.value = toLocalInput(defaultStart); endEl.value = toLocalInput(maxDate);
 
-  document.getElementById('btnLatest').onclick = () => loadLatest();
-  document.getElementById('btnLoad').onclick = () => loadRange(startEl.value, endEl.value);
+  // document.getElementById('btnLatest').onclick = () => loadLatest();
+  const btnLatest = document.getElementById('btnLatest');
+  if (btnLatest) {
+    btnLatest.onclick = () => loadLatest();
+  }
+
+  document.getElementById('btnLoad').onclick = () => {
+    loadRange(startEl.value, endEl.value);
+
+    rangeBtn.textContent =
+      `Range: ${startEl.value.replace('T',' ')} → ${endEl.value.replace('T',' ')}`;
+    rangeBtn.classList.add('active');
+    rangePanel.classList.add('hidden');
+  };
+
 
   // toggles (wire checkboxes)
   document.getElementById('toggle-sma20').addEventListener('change', e => { opts.sma20 = e.target.checked; updateAllIndicatorSeries(); });
@@ -504,28 +572,81 @@ async function initUI() {
   document.getElementById('paceproToggle').addEventListener('change', e => { opts.pacePro = e.target.checked; updateAllIndicatorSeries(); });
   document.getElementById('toggle-signals').addEventListener('change', e => { opts.signals = e.target.checked; updateAllIndicatorSeries(); });
   
-  document.getElementById('toggle-rsi').addEventListener('change', e => {
-    opts.rsi = e.target.checked;
-    document.body.classList.remove('fullscreen-mode'); // ensure normal view for toggling
-    if (!opts.rsi) rsiSeries.setData([]); else updateAllIndicatorSeries();
-  });
-  document.getElementById('toggle-macd').addEventListener('change', e => {
-    opts.macd = e.target.checked;
-    document.body.classList.remove('fullscreen-mode');
-    if (!opts.macd) { macdSeries.setData([]); macdSignalSeries.setData([]); macdHistSeries.setData([]); }
-    else updateAllIndicatorSeries();
-  });
 
-  // hamburger slide-out sidebar
-  const hamburger = document.getElementById('hamburger');
-  const overlay = document.getElementById('overlay');
-  hamburger.addEventListener('click', () => {
-    document.body.classList.toggle('sidebar-hidden');
-    if (document.body.classList.contains('sidebar-hidden')) overlay.style.display = 'block';
-    else overlay.style.display = 'none';
-    scheduleResizeCharts();
-  });
-  overlay.addEventListener('click', () => { document.body.classList.remove('sidebar-hidden'); overlay.style.display = 'none'; scheduleResizeCharts(); });
+    document.getElementById('toggle-rsi').addEventListener('change', e => {
+      const range = getCurrentVisibleRange();
+      opts.rsi = e.target.checked;
+
+      if (opts.rsi) {
+        rsiContainer.classList.remove('hidden');
+        rsiContainer.style.height = INDICATOR_HEIGHT + 'px';
+      } else {
+        rsiContainer.classList.add('hidden');
+      }
+
+      scheduleResizeCharts();
+
+      requestAnimationFrame(() => {
+        if (opts.rsi) {
+          rsiChart.resize(
+            rsiContainer.clientWidth,
+            rsiContainer.clientHeight
+          );
+        }
+        restoreVisibleRange(range);
+      });
+    });
+
+
+    document.getElementById('toggle-macd').addEventListener('change', e => {
+      const range = getCurrentVisibleRange();
+      opts.macd = e.target.checked;
+
+      if (opts.macd) {
+        macdContainer.classList.remove('hidden');
+        macdContainer.style.height = INDICATOR_HEIGHT + 'px';
+      } else {
+        macdContainer.classList.add('hidden');
+      }
+
+      scheduleResizeCharts();
+
+      requestAnimationFrame(() => {
+        if (opts.macd) {
+          macdChart.resize(
+            macdContainer.clientWidth,
+            macdContainer.clientHeight
+          );
+        }
+        restoreVisibleRange(range);
+      });
+    });
+
+    // ---- Replay controls ----
+  const toggleReplay = document.getElementById('toggle-replay');
+  if (toggleReplay) {
+    toggleReplay.addEventListener('change', e => {
+      replayMode = e.target.checked;
+      if (!replayMode) stopReplay();
+    });
+  }
+
+
+  document.getElementById('btnPlay').onclick = () => {
+    if (!replayMode) replayMode = true;
+
+    const ok = prepareReplayData();
+    if (!ok) return;
+
+    startReplay(Number(document.getElementById('replaySpeed').value) || 800);
+    setReplayStatus('playing');
+  };
+
+  document.getElementById('btnStop').onclick = () => {
+    stopReplay();
+    setReplayStatus('stopped');
+  };
+
 
   // fullscreen button (only main chart fullscreen)
   const fsBtn = document.getElementById('fullscreenBtn');
@@ -540,9 +661,109 @@ async function initUI() {
     // when toggling fullscreen, re-calc sizes
     scheduleResizeCharts();
   });
-
+  applyIndicatorColors();
   // when window resizes, resize charts
   window.addEventListener('resize', () => scheduleResizeCharts());
+}
+
+function setReplayStatus(state) {
+  const start = document.getElementById('replayStart').value.replace('T',' ');
+  replayBtn.textContent = `Replay: ${start}`;
+  replayBtn.classList.add('active');
+
+  document.getElementById('btnPlay').disabled = state === 'playing';
+  document.getElementById('btnStop').disabled = state !== 'playing';
+}
+
+function getCurrentVisibleRange() {
+  try {
+    return mainChart.timeScale().getVisibleLogicalRange();
+  } catch {
+    return null;
+  }
+}
+
+function restoreVisibleRange(range) {
+  if (!range) return;
+  try {
+    mainChart.timeScale().setVisibleLogicalRange(range);
+  } catch {
+    // ignore
+  }
+}
+
+function updateLayout() {
+  const area = document.getElementById('chart-area');
+  const totalHeight = area.clientHeight;
+
+  let usedHeight = 0;
+  if (opts.rsi)  usedHeight += INDICATOR_HEIGHT;
+  if (opts.macd) usedHeight += INDICATOR_HEIGHT;
+
+  let mainHeight = totalHeight - usedHeight;
+  if (mainHeight < MAIN_MIN_HEIGHT) {
+    mainHeight = MAIN_MIN_HEIGHT;
+  }
+
+  // DOM heights
+  chartMain.style.height = mainHeight + 'px';
+
+  if (opts.rsi) {
+    chartRSI.style.height = INDICATOR_HEIGHT + 'px';
+  }
+
+  if (opts.macd) {
+    chartMACD.style.height = INDICATOR_HEIGHT + 'px';
+  }
+
+  // Lightweight Charts heights
+  mainChart.applyOptions({ height: mainHeight });
+
+  if (opts.rsi) {
+    rsiChart.applyOptions({ height: INDICATOR_HEIGHT });
+  }
+
+  if (opts.macd) {
+    macdChart.applyOptions({ height: INDICATOR_HEIGHT });
+  }
+}
+
+
+
+function prepareReplayData() {
+  const replayStartInput = document.getElementById('replayStart').value;
+  if (!replayStartInput) {
+    alert('Please select Replay Start time');
+    return false;
+  }
+
+  const replayStartTs = new Date(replayStartInput).getTime() / 1000;
+
+  // Split existing loaded candles
+  const past = [];
+  const future = [];
+
+  for (const c of allCandles) {
+    if (c.time < replayStartTs) past.push(c);
+    else future.push(c);
+  }
+
+  if (!future.length) {
+    alert('No candles available after replay start time');
+    return false;
+  }
+
+  // Reset state
+  stopReplay();
+  replayIndex = 0;
+  replayCandles = future;
+  allCandles = past;
+
+  candleSeries.setData(allCandles);
+  updateAllIndicatorSeries();
+  mainChart.timeScale().fitContent();
+
+  return true;
 }
 
 // helper to format datetime-local
@@ -565,9 +786,12 @@ function resizeCharts() {
     const rsiContainer = document.getElementById('chart-rsi');
     const macdContainer = document.getElementById('chart-macd');
 
-    const wMain = mainContainer.clientWidth;
-    const hMain = mainContainer.clientHeight;
-    mainChart.resize(wMain, hMain);
+    const wMain = mainContainer.clientWidth || mainContainer.offsetWidth;
+    const hMain = mainContainer.clientHeight || mainContainer.offsetHeight;
+
+    if (wMain > 0 && hMain > 0) {
+      mainChart.resize(wMain, hMain);
+    }
 
     if (getComputedStyle(rsiContainer).display !== 'none') {
       rsiChart.resize(rsiContainer.clientWidth, rsiContainer.clientHeight);
@@ -580,11 +804,36 @@ function resizeCharts() {
   }
 }
 
+function startReplay(speed) {
+  if (replayTimer) return;
+
+  replayTimer = setInterval(() => {
+    if (replayIndex >= replayCandles.length) {
+      stopReplay();
+      return;
+    }
+
+    allCandles.push(replayCandles[replayIndex]);
+    candleSeries.setData(allCandles);
+    updateAllIndicatorSeries();
+
+    replayIndex++;
+  }, speed);
+}
+
+function stopReplay() {
+  if (replayTimer) {
+    clearInterval(replayTimer);
+    replayTimer = null;
+  }
+}
+
 // ------------------ boot ------------------
 (async function init() {
   createCharts();
   await initUI();
   await loadLatest();
-  // initial resize to match container sizes
-  scheduleResizeCharts();
+
+  // force correct size after header layout
+  setTimeout(resizeCharts, 0);
 })();

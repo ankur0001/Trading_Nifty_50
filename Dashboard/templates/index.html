@@ -7,63 +7,88 @@
   <script src="https://unpkg.com/lightweight-charts@4.0.1/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
-  <div id="sidebar" class="sidebar">
-    <div class="sidebar-header">
-      <button id="hamburger" class="hamburger" title="Toggle sidebar ☰">☰</button>
-      <h3>Indicators</h3>
+  <header class="chart-header">
+    <div class="header-left">
+      <span class="title">Chart Analysis</span>
     </div>
 
-    <div class="sidebar-content">
-      <div class="group">
-        <label class="control"><span class="badge" id="badge-sma20"></span><input id="toggle-sma20" type="checkbox" checked> SMA 20</label>
-        <label class="control"><span class="badge" id="badge-sma50"></span><input id="toggle-sma50" type="checkbox" checked> SMA 50</label>
-        <label class="control"><span class="badge" id="badge-ema12"></span><input id="toggle-ema12" type="checkbox" checked> EMA 12</label>
-        <label class="control"><span class="badge" id="badge-bb"></span><input id="toggle-bb" type="checkbox" checked> Bollinger Bands (20,2)</label>
-        <label class="control"><span class="badge" id="badge-pace"></span><input id="paceproToggle" type="checkbox" checked> PacePro</label>
-      </div>
+    <div class="header-right">
 
-      <div class="group-title">Oscillators (separate panels)</div>
-      <div class="group">
-        <label class="control"><span class="badge" id="badge-rsi"></span><input id="toggle-rsi" type="checkbox" checked> RSI 14</label>
-        <label class="control"><span class="badge" id="badge-macd"></span><input id="toggle-macd" type="checkbox" checked> MACD (12,26,9)</label>
-      </div>
-      <div class="group-title">Trade Alerts</div>
-      <div class="group">
-        <label class="control">
-          <span class="badge" style="background:#2ECC71"></span>
-          <input id="toggle-signals" type="checkbox" checked>
-          In-Day Buy / Sell
-        </label>
-      </div>
 
-      <div class="group-title">Range</div>
-      <div class="group small">
-        <label>Start:
-          <input id="start" type="datetime-local">
-        </label>
-        <label>End:
-          <input id="end" type="datetime-local">
-        </label>
-        <div style="margin-top:8px;">
-          <button id="btnLoad">Load Range</button>
-          <button id="btnLatest">Load Latest</button>
+      <div class="dropdown">
+        <button class="header-btn">
+          Indicators ▾
+        </button>
+        <div class="dropdown-panel">
+          <div class="section">
+            <label><span class="badge sma20"></span><input id="toggle-sma20" type="checkbox" checked> SMA 20</label>
+            <label><span class="badge sma50"></span><input id="toggle-sma50" type="checkbox" checked> SMA 50</label>
+            <label><span class="badge ema12"></span><input id="toggle-ema12" type="checkbox" checked> EMA 12</label>
+            <label><span class="badge bb"></span><input id="toggle-bb" type="checkbox" checked> Bollinger Bands</label>
+            <label><span class="badge pacepro"></span><input id="paceproToggle" type="checkbox" checked> PacePro</label>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="section">
+            <label><span class="badge rsi"></span><input id="toggle-rsi" type="checkbox" checked> RSI</label>
+            <label><span class="badge macd"></span><input id="toggle-macd" type="checkbox" checked> MACD</label>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="section">
+            <label><span class="badge signals"></span><input id="toggle-signals" type="checkbox" checked> Trade Alerts</label>
+          </div>
         </div>
       </div>
 
-      <div class="small note">Data range and lazy-loading preserved. Indicators update automatically.</div>
+      <button id="rangeBtn" class="status-btn">
+        Range: Not Set
+      </button>
+
+      <button id="replayBtn" class="status-btn">
+        Replay: OFF
+      </button>
+    </div>
+  </header>
+
+  <div id="rangePanel" class="floating-panel hidden">
+    <label>From
+      <input id="start" type="datetime-local">
+    </label>
+    <label>To
+      <input id="end" type="datetime-local">
+    </label>
+    <button id="btnLoad">Load</button>
+  </div>
+
+  <div id="replayPanel" class="floating-panel hidden">
+    <label>Replay Start
+      <input id="replayStart" type="datetime-local">
+    </label>
+    <label>Speed (ms)
+      <input id="replaySpeed" type="number" value="800">
+    </label>
+
+    <div class="replay-actions">
+      <button id="btnPlay">▶</button>
+      <button id="btnStop" disabled>⏸</button>
     </div>
   </div>
+
+
 
   <div id="overlay" class="overlay" style="display:none;"></div>
 
   <div id="main">
     <div id="chart-area">
-      <div id="chart-main" class="chart-box">
+      <div id="chart-main" class="chart-box chart-panel">
         <button id="fullscreenBtn" class="fullscreen-btn" title="Full screen ⤢">⤢</button>
         <!-- main Lightweight Chart will be rendered inside -->
       </div>
-      <div id="chart-rsi" class="chart-box subchart"></div>
-      <div id="chart-macd" class="chart-box subchart"></div>
+      <div id="chart-rsi" class="chart-box subchart chart-panel"></div>
+      <div id="chart-macd" class="chart-box subchart chart-panel"></div>
     </div>
   </div>
 
