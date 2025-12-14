@@ -1,0 +1,8 @@
+# Strategy 1
+🟢 BUY
+EMA 12 crosses ABOVE SMA 20
+AND RSI > 40
+
+🔴 SELL
+EMA 12 crosses BELOW SMA 20
+AND RSI < 60
