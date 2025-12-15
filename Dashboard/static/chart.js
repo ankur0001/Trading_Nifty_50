@@ -18,12 +18,24 @@ let allCandles = [];
 let loadedMin = null;
 let loadedMax = null;
 let loading = false;
+let raw1mData = [];     // original 1-minute candles
+let currentTF = 1;     // minutes
+
+
 
 // ---- Replay state ----
 let replayMode = false;
 let replayTimer = null;
 let replayIndex = 0;
 let replayCandles = [];
+let replayState = 'IDLE'; // IDLE | PLAYING | PAUSED
+let replayData = [];
+let rangeSelected = false;
+let rangeStartTs = null;
+let rangeEndTs = null;
+
+
+
 const INDICATOR_HEIGHT = 160;
 const MAIN_MIN_HEIGHT = 200;   // 🔥 critical
 
@@ -37,7 +49,7 @@ const panelHeights = {
 
 // toggles/options
 const opts = {
-  sma20: true, sma50: true, ema12: true, bb: true, pacePro: true, rsi: true, macd: true, signals: true
+  sma20: true, sma50: true, ema12: true, bb: true, pacePro: false, rsi: true, macd: true, signals: false
 };
 
 // ---- Header UI elements ----
@@ -127,6 +139,10 @@ function createCharts() {
 
   // set badge colors in sidebar
   setIndicatorBadges();
+}
+
+function validateReplayStart(ts) {
+  return ts >= rangeStartTs && ts <= rangeEndTs;
 }
 
 function syncTimeScales() {
@@ -416,6 +432,69 @@ function updateAllIndicatorSeries() {
   scheduleResizeCharts();
 }
 
+function playReplay() {
+  if (replayState === 'PLAYING') return;
+
+  // ▶️ First start
+  if (replayState === 'IDLE') {
+    replayData = resampleCandles(raw1mData, currentTF);
+    replayIndex = findReplayStartIndex(replayData);
+
+    // show candles up to replay start
+    allCandles = replayData.slice(0, replayIndex);
+    candleSeries.setData(allCandles);
+    updateAllIndicatorSeries();
+  }
+
+  replayState = 'PLAYING';
+
+  replayTimer = setInterval(() => {
+    if (replayIndex >= replayData.length) {
+      stopReplay();
+      return;
+    }
+
+    const candle = replayData[replayIndex];
+
+    // 1️⃣ add next candle
+    allCandles.push(candle);
+    candleSeries.update(candle);
+
+    // 2️⃣ update indicators on visible data only
+    updateAllIndicatorSeries();
+
+    replayIndex++;
+
+    // 3️⃣ 🔥 keep last candle visible
+    mainChart.timeScale().scrollToRealTime();
+  }, replaySpeed);
+}
+
+function pauseReplay() {
+  if (replayState !== 'PLAYING') return;
+
+  clearInterval(replayTimer);
+  replayTimer = null;
+
+  replayState = 'PAUSED';
+}
+function stopReplay() {
+  clearInterval(replayTimer);
+  replayTimer = null;
+
+  replayState = 'IDLE';
+  replayIndex = 0;
+  replayData = [];
+
+  // restore full dataset
+  allCandles = resampleCandles(raw1mData, currentTF);
+  candleSeries.setData(allCandles);
+  updateAllIndicatorSeries();
+
+  mainChart.timeScale().fitContent();
+}
+
+
 // ------------------- loading data (uses your Flask endpoints) -------------------
 async function loadLatest(limit = INITIAL_LIMIT) {
   if (loading) return;
@@ -423,13 +502,29 @@ async function loadLatest(limit = INITIAL_LIMIT) {
   try {
     const res = await fetch(`/data-latest?limit=${limit}`);
     const j = await res.json();
-    allCandles = j.candles || [];
-    loadedMin = j.min_time; loadedMax = j.max_time;
+
+    raw1mData = j.candles || [];
+    allCandles = resampleCandles(raw1mData, currentTF);
+
+    loadedMin = j.min_time;
+    loadedMax = j.max_time;
+
     candleSeries.setData(allCandles);
     updateAllIndicatorSeries();
     mainChart.timeScale().fitContent();
-  } finally { loading = false; }
+
+    // 🔥 RANGE CLEARED
+    rangeSelected = false;
+    rangeStartTs = null;
+    rangeEndTs = null;
+
+    if (replayBtn) replayBtn.disabled = true;
+
+  } finally {
+    loading = false;
+  }
 }
+
 
 async function loadBefore(limit = INITIAL_LIMIT) {
   if (loading || loadedMin === null || loadedMin <= window.DATA_MIN_TS) return;
@@ -440,7 +535,8 @@ async function loadBefore(limit = INITIAL_LIMIT) {
     const j = await res.json();
     if (j.candles && j.candles.length) {
       const newCount = j.candles.length;
-      allCandles = [...j.candles, ...allCandles];
+      raw1mData = [...j.candles, ...raw1mData];
+      allCandles = resampleCandles(raw1mData, currentTF);
       loadedMin = j.min_time; loadedMax = Math.max(loadedMax, j.max_time);
       candleSeries.setData(allCandles);
       updateAllIndicatorSeries();
@@ -471,18 +567,36 @@ async function loadAfter(limit = INITIAL_LIMIT) {
 
 async function loadRange(startIso, endIso) {
   if (!startIso) return alert("Please select a start datetime");
+
   const qs = new URLSearchParams({ start: startIso, end: endIso });
   const res = await fetch(`/data-range?${qs.toString()}`);
   const j = await res.json();
-  allCandles = j.candles || [];
+
+  raw1mData = j.candles || [];
+  allCandles = resampleCandles(raw1mData, currentTF);
+
   if (!allCandles.length) {
-    candleSeries.setData([]); updateAllIndicatorSeries(); alert("No data found for this range"); return;
+    candleSeries.setData([]);
+    updateAllIndicatorSeries();
+    alert("No data found for this range");
+    return;
   }
-  loadedMin = j.min_time; loadedMax = j.max_time;
+
+  loadedMin = j.min_time;
+  loadedMax = j.max_time;
+
   candleSeries.setData(allCandles);
   updateAllIndicatorSeries();
   mainChart.timeScale().fitContent();
+
+  // 🔥 RANGE SELECTED
+  rangeSelected = true;
+  rangeStartTs = loadedMin;
+  rangeEndTs = loadedMax;
+
+  if (replayBtn) replayBtn.disabled = false;
 }
+
 
 // ---------------- UI init, toggles, badges, hamburger, fullscreen ----------------
 function setIndicatorBadges() {
@@ -605,6 +719,14 @@ async function initUI() {
       });
     });
 
+    document.querySelectorAll('.tf-option').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tf = parseInt(btn.dataset.tf, 10);
+        applyTimeframe(tf);
+      });
+    });
+
+
     // ---- Replay controls ----
   const toggleReplay = document.getElementById('toggle-replay');
   if (toggleReplay) {
@@ -665,6 +787,63 @@ function getCurrentVisibleRange() {
   }
 }
 
+function resampleCandles(data, tfMinutes) {
+  if (tfMinutes === 1) return data.slice(); // copy
+
+  const tfSec = tfMinutes * 60;
+  const result = [];
+
+  let bucket = null;
+
+  for (const c of data) {
+    const bucketTime = Math.floor(c.time / tfSec) * tfSec;
+
+    if (!bucket || bucket.time !== bucketTime) {
+      if (bucket) result.push(bucket);
+
+      bucket = {
+        time: bucketTime,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        volume: c.volume || 0
+      };
+    } else {
+      bucket.high = Math.max(bucket.high, c.high);
+      bucket.low  = Math.min(bucket.low, c.low);
+      bucket.close = c.close;
+      bucket.volume += c.volume || 0;
+    }
+  }
+
+  if (bucket) result.push(bucket);
+  return result;
+}
+
+function applyTimeframe(tf) {
+  if (!raw1mData.length) return;
+
+  const prevRange = mainChart.timeScale().getVisibleLogicalRange();
+
+  currentTF = tf;
+  allCandles = resampleCandles(raw1mData, tf);
+
+  candleSeries.setData(allCandles);
+  updateAllIndicatorSeries();
+
+  if (prevRange) {
+    requestAnimationFrame(() => {
+      mainChart.timeScale().setVisibleLogicalRange(prevRange);
+    });
+  } else {
+    mainChart.timeScale().fitContent();
+  }
+
+  document.getElementById('tfBtn').textContent = `${tf}m ▾`;
+}
+
+
 function restoreVisibleRange(range) {
   if (!range) return;
   try {
@@ -720,12 +899,12 @@ function prepareReplayData() {
   }
 
   const replayStartTs = new Date(replayStartInput).getTime() / 1000;
-
+  const tfData = resampleCandles(raw1mData, currentTF);
   // Split existing loaded candles
   const past = [];
   const future = [];
 
-  for (const c of allCandles) {
+  for (const c of tfData) {
     if (c.time < replayStartTs) past.push(c);
     else future.push(c);
   }
@@ -738,8 +917,8 @@ function prepareReplayData() {
   // Reset state
   stopReplay();
   replayIndex = 0;
-  replayCandles = future;
   allCandles = past;
+  replayCandles = future;
 
   candleSeries.setData(allCandles);
   updateAllIndicatorSeries();
@@ -803,12 +982,6 @@ function startReplay(speed) {
   }, speed);
 }
 
-function stopReplay() {
-  if (replayTimer) {
-    clearInterval(replayTimer);
-    replayTimer = null;
-  }
-}
 
 // ------------------ boot ------------------
 (async function init() {
