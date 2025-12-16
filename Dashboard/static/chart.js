@@ -1,121 +1,63 @@
-// static/chart.js
-// Full client-side chart + overlays + toggles + fullscreen + slide-out sidebar
-// Uses endpoints: /data-info, /data-latest, /data-before, /data-after, /data-range
+// static/chart.js - Part 1 of 2
+// Trading chart with indicators, replay mode, and timeframe switching
 
 const INITIAL_LIMIT = 300;
+const INDICATOR_HEIGHT = 160;
+const MAIN_MIN_HEIGHT = 200;
 
 // Chart instances & series
 let mainChart, rsiChart, macdChart;
-let candleSeries;
-let sma20Series, sma50Series, ema12Series;
-let bbUpperSeries, bbMiddleSeries, bbLowerSeries;
-let paceProSeries;
-let rsiSeries;
-let macdSeries, macdSignalSeries, macdHistSeries;
+let candleSeries, sma20Series, sma50Series, ema12Series;
+let bbUpperSeries, bbMiddleSeries, bbLowerSeries, paceProSeries;
+let rsiSeries, macdSeries, macdSignalSeries, macdHistSeries;
 
-// in-memory candles (ascending by time)
-let allCandles = [];
-let loadedMin = null;
-let loadedMax = null;
-let loading = false;
-let raw1mData = [];     // original 1-minute candles
-let currentTF = 1;     // minutes
+// Data storage
+let allCandles = [], raw1mData = [], currentTF = 1;
+let loadedMin = null, loadedMax = null, loading = false;
 
+// Range & Replay state
+let rangeSelected = false, rangeStartTs = null, rangeEndTs = null;
+let replayState = 'IDLE', replayTimer = null, replayIndex = 0, replayCandles = [], replaySpeed = 800;
 
+// UI elements
+let rangeBtn, replayBtn, rangePanel, replayPanel;
 
-// ---- Replay state ----
-let replayMode = false;
-let replayTimer = null;
-let replayIndex = 0;
-let replayCandles = [];
-let replayState = 'IDLE'; // IDLE | PLAYING | PAUSED
-let replayData = [];
-let rangeSelected = false;
-let rangeStartTs = null;
-let rangeEndTs = null;
-let replayStartInputEl = null;
+// Indicator toggles
+const opts = { sma20: true, sma50: true, ema12: true, bb: true, pacePro: false, rsi: true, macd: true, signals: false };
 
-let replaySource = [];   // full TF data
-const MARKET_OPEN_HOUR = 9;
-const MARKET_OPEN_MIN = 15;
-
-const MARKET_CLOSE_HOUR = 15;
-const MARKET_CLOSE_MIN = 30;
-
-
-
-
-const INDICATOR_HEIGHT = 160;
-const MAIN_MIN_HEIGHT = 200;   // 🔥 critical
-
-
-
-const panelHeights = {
-  rsi: null,
-  macd: null
-};
-
-
-// toggles/options
-const opts = {
-  sma20: true, sma50: true, ema12: true, bb: true, pacePro: false, rsi: true, macd: true, signals: false
-};
-
-// ---- Header UI elements ----
-let rangeBtn, replayBtn;
-let rangePanel, replayPanel;
-
-// indicator colors (auto-assigned non-conflicting)
+// Colors
 const COLORS = {
-  sma20: '#1E88E5',   // blue
-  sma50: '#6A1B9A',   // purple
-  ema12: '#00ACC1',   // teal
-  bb: '#9E9E9E',      // gray
-  pacePos: '#1565C0', // dark blue
-  paceNeg: '#FF9800', // orange
-  rsi: '#F57C00',
-  macd: '#1565C0',
-  macdSignal: '#D32F2F',
-  macdHistPos: '#8E24AA',
-  macdHistNeg: '#FFB300'
+  sma20: '#1E88E5', sma50: '#6A1B9A', ema12: '#00ACC1', bb: '#9E9E9E',
+  pacePos: '#1565C0', paceNeg: '#FF9800', rsi: '#F57C00', macd: '#1565C0',
+  macdSignal: '#D32F2F', macdHistPos: '#8E24AA', macdHistNeg: '#FFB300'
 };
 
-// ---------- create charts & series ----------
+// ==================== CHART CREATION ====================
 function createCharts() {
-  // main chart
-  mainChart = LightweightCharts.createChart(document.getElementById('chart-main'), {
+  const chartOpts = {
     layout: { background: { color: '#ffffff' }, textColor: '#111' },
     grid: { vertLines: { color: '#f0f0f0' }, horzLines: { color: '#f7f7f7' } },
     rightPriceScale: { borderVisible: true },
     timeScale: { timeVisible: true, secondsVisible: false, rightOffset: 12, barSpacing: 20, minBarSpacing: 6 },
     handleScroll: { mouseWheel: true, pressedMouseMove: true },
     handleScale: { mouseWheel: true, pinch: true }
-  });
+  };
 
+  mainChart = LightweightCharts.createChart(document.getElementById('chart-main'), chartOpts);
   candleSeries = mainChart.addCandlestickSeries({
-    upColor: '#26a69a', downColor: '#ef5350',
-    wickUpColor: '#26a69a', wickDownColor: '#ef5350',
-    borderVisible: false
+    upColor: '#26a69a', downColor: '#ef5350', wickUpColor: '#26a69a', wickDownColor: '#ef5350', borderVisible: false
   });
 
-  // overlay series
   sma20Series = mainChart.addLineSeries({ color: COLORS.sma20, lineWidth: 2, lastValueVisible: false });
   sma50Series = mainChart.addLineSeries({ color: COLORS.sma50, lineWidth: 2, lastValueVisible: false });
   ema12Series = mainChart.addLineSeries({ color: COLORS.ema12, lineWidth: 2, lastValueVisible: false });
-
   bbMiddleSeries = mainChart.addLineSeries({ color: COLORS.bb, lineWidth: 1.2, lastValueVisible: false });
   bbUpperSeries = mainChart.addLineSeries({ color: COLORS.bb, lineWidth: 1, lastValueVisible: false });
   bbLowerSeries = mainChart.addLineSeries({ color: COLORS.bb, lineWidth: 1, lastValueVisible: false });
-
   paceProSeries = mainChart.addHistogramSeries({
-    color: COLORS.pacePos,
-    base: 0,
-    priceFormat: { type: 'volume' },
-    priceScaleId: '',
-    scaleMargins: { top: 0.82, bottom: 0 }
+    color: COLORS.pacePos, base: 0, priceFormat: { type: 'volume' }, priceScaleId: '', scaleMargins: { top: 0.82, bottom: 0 }
   });
 
-  // RSI chart
   rsiChart = LightweightCharts.createChart(document.getElementById('chart-rsi'), {
     layout: { background: { color: '#fff' }, textColor: '#111' },
     rightPriceScale: { scaleMargins: { top: 0.2, bottom: 0.2 } },
@@ -123,7 +65,6 @@ function createCharts() {
   });
   rsiSeries = rsiChart.addLineSeries({ color: COLORS.rsi, lineWidth: 2 });
 
-  // MACD chart
   macdChart = LightweightCharts.createChart(document.getElementById('chart-macd'), {
     layout: { background: { color: '#fff' }, textColor: '#111' },
     rightPriceScale: { scaleMargins: { top: 0.2, bottom: 0.2 } },
@@ -133,70 +74,49 @@ function createCharts() {
   macdSeries = macdChart.addLineSeries({ color: COLORS.macd, lineWidth: 2 });
   macdSignalSeries = macdChart.addLineSeries({ color: COLORS.macdSignal, lineWidth: 1.5 });
 
-  // sync time scales
   syncTimeScales();
-
-  // lazy-load detection on main chart
-  mainChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
-    if (!range || !allCandles.length) return;
-    const from = Math.floor(range.from);
-    const to = Math.ceil(range.to);
-    const THRESH = 6;
-    if (from <= THRESH && !loading && loadedMin > window.DATA_MIN_TS) loadBefore();
-    if (to >= (allCandles.length - THRESH) && !loading && loadedMax < window.DATA_MAX_TS) loadAfter();
-  });
-
-  // set badge colors in sidebar
+  setupLazyLoading();
   setIndicatorBadges();
 }
 
-function validateReplayStart(ts) {
-  return ts >= rangeStartTs && ts <= rangeEndTs;
-}
-
 function syncTimeScales() {
-  const tsMain = mainChart.timeScale();
-  const tsRsi = rsiChart.timeScale();
-  const tsMacd = macdChart.timeScale();
-
-  tsMain.subscribeVisibleLogicalRangeChange(range => {
-    if (!range) return;
-    tsRsi.setVisibleLogicalRange(range);
-    tsMacd.setVisibleLogicalRange(range);
+  const ts = [mainChart.timeScale(), rsiChart.timeScale(), macdChart.timeScale()];
+  ts.forEach((t, i) => {
+    t.subscribeVisibleLogicalRangeChange(r => {
+      if (!r) return;
+      ts.forEach((ot, j) => { if (i !== j) ot.setVisibleLogicalRange(r); });
+    });
   });
-  tsRsi.subscribeVisibleLogicalRangeChange(range => { if (!range) return; tsMain.setVisibleLogicalRange(range); tsMacd.setVisibleLogicalRange(range); });
-  tsMacd.subscribeVisibleLogicalRangeChange(range => { if (!range) return; tsMain.setVisibleLogicalRange(range); tsRsi.setVisibleLogicalRange(range); });
 }
 
-// ---------------- indicator calculations ----------------
+function setupLazyLoading() {
+  mainChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+    if (!range || !allCandles.length || replayState === 'PLAYING') return;
+    const from = Math.floor(range.from), to = Math.ceil(range.to), THRESH = 6;
+    if (from <= THRESH && !loading && loadedMin > window.DATA_MIN_TS) loadBefore();
+    if (to >= (allCandles.length - THRESH) && !loading && loadedMax < window.DATA_MAX_TS) loadAfter();
+  });
+}
+
+// ==================== INDICATORS ====================
 function sma(values, period) {
-  const out = [];
-  let sum = 0;
+  const out = []; let sum = 0;
   for (let i = 0; i < values.length; i++) {
     sum += values[i];
     if (i >= period) sum -= values[i - period];
-    if (i >= period - 1) out.push(sum / period);
-    else out.push(null);
+    out.push(i >= period - 1 ? sum / period : null);
   }
   return out;
 }
 
 function ema(values, period) {
-  const out = [];
-  const k = 2 / (period + 1);
-  let prev = null;
+  const out = [], k = 2 / (period + 1); let prev = null;
   for (let i = 0; i < values.length; i++) {
     const v = values[i];
     if (prev === null) {
-      if (i === period - 1) {
-        const sum = values.slice(0, period).reduce((a, b) => a + b, 0);
-        prev = sum / period;
-        out.push(prev);
-      } else out.push(null);
-    } else {
-      prev = v * k + prev * (1 - k);
-      out.push(prev);
-    }
+      if (i === period - 1) { prev = values.slice(0, period).reduce((a, b) => a + b, 0) / period; out.push(prev); }
+      else out.push(null);
+    } else { prev = v * k + prev * (1 - k); out.push(prev); }
   }
   return out;
 }
@@ -205,504 +125,330 @@ function stddev(values, period) {
   const out = [];
   for (let i = 0; i < values.length; i++) {
     if (i < period - 1) { out.push(null); continue; }
-    const window = values.slice(i - period + 1, i + 1);
-    const mean = window.reduce((a, b) => a + b, 0) / period;
-    const variance = window.reduce((s, x) => s + Math.pow(x - mean, 2), 0) / period;
-    out.push(Math.sqrt(variance));
+    const w = values.slice(i - period + 1, i + 1), m = w.reduce((a, b) => a + b, 0) / period;
+    out.push(Math.sqrt(w.reduce((s, x) => s + Math.pow(x - m, 2), 0) / period));
   }
   return out;
 }
 
 function emaFilled(series, period) {
-  const out = [];
-  const k = 2 / (period + 1);
-  let prev = null;
+  const out = [], k = 2 / (period + 1); let prev = null;
   for (let i = 0; i < series.length; i++) {
     const v = series[i];
     if (v === null || v === undefined) { out.push(null); continue; }
     if (prev === null) {
-      const window = [];
-      for (let j = i; j > i - period && j >= 0; j--) {
-        if (series[j] !== null && series[j] !== undefined) window.unshift(series[j]);
-      }
-      if (window.length < period) { out.push(null); continue; }
-      const smaInit = window.reduce((a, b) => a + b, 0) / window.length;
-      prev = smaInit;
-      out.push(prev);
-    } else {
-      prev = v * k + prev * (1 - k);
-      out.push(prev);
-    }
+      const w = []; for (let j = i; j > i - period && j >= 0; j--) if (series[j] != null) w.unshift(series[j]);
+      if (w.length < period) { out.push(null); continue; }
+      prev = w.reduce((a, b) => a + b, 0) / w.length; out.push(prev);
+    } else { prev = v * k + prev * (1 - k); out.push(prev); }
   }
   return out;
 }
 
 function calculateRSI(closes, period = 14) {
-  const out = [];
-  let gains = 0, losses = 0;
+  const out = []; let gains = 0, losses = 0;
   for (let i = 0; i < closes.length; i++) {
     if (i === 0) { out.push(null); continue; }
-    const change = closes[i] - closes[i - 1];
-    const gain = Math.max(change, 0);
-    const loss = Math.max(-change, 0);
+    const change = closes[i] - closes[i - 1], gain = Math.max(change, 0), loss = Math.max(-change, 0);
     if (i <= period) {
       gains += gain; losses += loss;
       if (i === period) {
-        const avgGain = gains / period; const avgLoss = losses / period;
-        const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+        const avgG = gains / period, avgL = losses / period, rs = avgL === 0 ? 100 : avgG / avgL;
         out.push(100 - (100 / (1 + rs)));
       } else out.push(null);
     } else {
-      const prevAvgGain = out.avgGain !== undefined ? out.avgGain : (gains / period);
-      const prevAvgLoss = out.avgLoss !== undefined ? out.avgLoss : (losses / period);
-      const avgGain = (prevAvgGain * (period - 1) + gain) / period;
-      const avgLoss = (prevAvgLoss * (period - 1) + loss) / period;
-      out.avgGain = avgGain; out.avgLoss = avgLoss;
-      const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+      const prevG = out.avgGain ?? (gains / period), prevL = out.avgLoss ?? (losses / period);
+      const avgG = (prevG * (period - 1) + gain) / period, avgL = (prevL * (period - 1) + loss) / period;
+      out.avgGain = avgG; out.avgLoss = avgL;
+      const rs = avgL === 0 ? 100 : avgG / avgL;
       out.push(100 - (100 / (1 + rs)));
     }
   }
   return out;
 }
 
-function normalizeAndSmooth(values, period = 5) {
-  if (!values.length) return [];
-  const absMax = Math.max(...values.map(v => Math.abs(v))) || 1;
-  const normalized = values.map(v => (v / absMax) * 100);
-  const smoothed = [];
-  for (let i = 0; i < normalized.length; i++) {
-    let sum = 0, count = 0;
-    for (let j = i - period + 1; j <= i; j++) {
-      if (j >= 0) { sum += normalized[j]; count++; }
-    }
-    smoothed.push(count ? sum / count : 0);
-  }
-  return smoothed;
-}
-
 function calculateIndicators(candles) {
   if (!candles.length) return {};
   const closes = candles.map(c => c.close);
-
-  const sma20 = sma(closes, 20);
-  const sma50 = sma(closes, 50);
-  const ema12 = ema(closes, 12);
-  const ema26 = ema(closes, 26);
-
-  const bbMid = sma20;
+  const sma20Val = sma(closes, 20), sma50Val = sma(closes, 50);
+  const ema12Val = ema(closes, 12), ema26 = ema(closes, 26);
   const bbStd = stddev(closes, 20);
-  const bbUpper = bbMid.map((m, i) => (m === null || bbStd[i] === null) ? null : m + 2 * bbStd[i]);
-  const bbLower = bbMid.map((m, i) => (m === null || bbStd[i] === null) ? null : m - 2 * bbStd[i]);
-
-  const paceRaw = [];
-  for (let i = 0; i < candles.length; i++) {
-    const c = candles[i];
-    const val = ((c.close - c.open) / c.open) * 100;
-    paceRaw.push(val);
-  }
-  const paceNorm = normalizeAndSmooth(paceRaw, 5);
-
-  const rsi = calculateRSI(closes, 14);
-
-  const macdLine = [];
-  for (let i = 0; i < closes.length; i++) {
-    const e12 = ema12[i]; const e26 = ema26[i];
-    macdLine.push((e12 === null || e26 === null) ? null : e12 - e26);
-  }
+  const bbUpper = sma20Val.map((m, i) => (m == null || bbStd[i] == null) ? null : m + 2 * bbStd[i]);
+  const bbLower = sma20Val.map((m, i) => (m == null || bbStd[i] == null) ? null : m - 2 * bbStd[i]);
+  const paceRaw = candles.map(c => ((c.close - c.open) / c.open) * 100);
+  const absMax = Math.max(...paceRaw.map(v => Math.abs(v))) || 1;
+  const normalized = paceRaw.map(v => (v / absMax) * 100);
+  const paceNorm = normalized.map((_, i) => {
+    let sum = 0, cnt = 0;
+    for (let j = i - 4; j <= i; j++) if (j >= 0) { sum += normalized[j]; cnt++; }
+    return cnt ? sum / cnt : 0;
+  });
+  const rsiVal = calculateRSI(closes, 14);
+  const macdLine = ema12Val.map((e12, i) => (e12 == null || ema26[i] == null) ? null : e12 - ema26[i]);
   const macdSignal = emaFilled(macdLine, 9);
-  const macdHist = macdLine.map((v, i) => (v === null || macdSignal[i] === null) ? null : v - macdSignal[i]);
-
-  return { sma20, sma50, ema12, bbUpper, bbMiddle: bbMid, bbLower, paceNorm, rsi, macdLine, macdSignal, macdHist };
+  const macdHist = macdLine.map((v, i) => (v == null || macdSignal[i] == null) ? null : v - macdSignal[i]);
+  return { sma20: sma20Val, sma50: sma50Val, ema12: ema12Val, bbUpper, bbMiddle: sma20Val, bbLower, paceNorm, rsi: rsiVal, macdLine, macdSignal, macdHist };
 }
 
 function calculateTradeSignals(candles, indicators) {
   const markers = [];
-
   for (let i = 1; i < candles.length; i++) {
-    const ema = indicators.ema12;
-    const sma = indicators.sma20;
-    const rsi = indicators.rsi;
-
-    if (
-      ema[i] && sma[i] &&
-      ema[i - 1] <= sma[i - 1] &&
-      ema[i] > sma[i] &&
-      rsi[i] > 40
-    ) {
-      markers.push({
-        time: candles[i].time,
-        position: 'belowBar',
-        color: '#2ECC71',
-        shape: 'arrowUp',
-        text: 'BUY'
-      });
-    }
-
-    if (
-      ema[i] && sma[i] &&
-      ema[i - 1] >= sma[i - 1] &&
-      ema[i] < sma[i] &&
-      rsi[i] < 60
-    ) {
-      markers.push({
-        time: candles[i].time,
-        position: 'aboveBar',
-        color: '#E74C3C',
-        shape: 'arrowDown',
-        text: 'SELL'
-      });
-    }
+    const { ema12: ema, sma20: sma, rsi } = indicators;
+    if (ema[i] && sma[i] && ema[i - 1] <= sma[i - 1] && ema[i] > sma[i] && rsi[i] > 40)
+      markers.push({ time: candles[i].time, position: 'belowBar', color: '#2ECC71', shape: 'arrowUp', text: 'BUY' });
+    if (ema[i] && sma[i] && ema[i - 1] >= sma[i - 1] && ema[i] < sma[i] && rsi[i] < 60)
+      markers.push({ time: candles[i].time, position: 'aboveBar', color: '#E74C3C', shape: 'arrowDown', text: 'SELL' });
   }
   return markers;
 }
 
-// -------------------- apply indicator data to series --------------------
+// SEE PART 2 IN NEXT MESSAGE FOR REMAINING FUNCTIONS
+// static/chart.js - Part 2 of 2
+// APPEND THIS TO PART 1
+
+// ==================== UPDATE SERIES ====================
 function updateAllIndicatorSeries() {
   const indicators = calculateIndicators(allCandles);
+  const buildSeries = arr => {
+    if (!arr?.length) return [];
+    return arr.map((v, i) => v != null ? { time: allCandles[i].time, value: v } : null).filter(Boolean);
+  };
 
-  function buildSeries(arr) {
-    if (!arr || !arr.length) return [];
-    const out = [];
-    for (let i = 0; i < arr.length; i++) {
-      const v = arr[i];
-      if (v === null || v === undefined) continue;
-      out.push({ time: allCandles[i].time, value: v });
-    }
-    return out;
-  }
-
-  if (opts.sma20) sma20Series.setData(buildSeries(indicators.sma20)); else sma20Series.setData([]);
-  if (opts.sma50) sma50Series.setData(buildSeries(indicators.sma50)); else sma50Series.setData([]);
-  if (opts.ema12) ema12Series.setData(buildSeries(indicators.ema12)); else ema12Series.setData([]);
+  sma20Series.setData(opts.sma20 ? buildSeries(indicators.sma20) : []);
+  sma50Series.setData(opts.sma50 ? buildSeries(indicators.sma50) : []);
+  ema12Series.setData(opts.ema12 ? buildSeries(indicators.ema12) : []);
 
   if (opts.bb) {
     bbMiddleSeries.setData(buildSeries(indicators.bbMiddle));
     bbUpperSeries.setData(buildSeries(indicators.bbUpper));
     bbLowerSeries.setData(buildSeries(indicators.bbLower));
-  } else {
-    bbMiddleSeries.setData([]); bbUpperSeries.setData([]); bbLowerSeries.setData([]);
-  }
+  } else { bbMiddleSeries.setData([]); bbUpperSeries.setData([]); bbLowerSeries.setData([]); }
 
   if (opts.pacePro) {
-    const paceArr = indicators.paceNorm || [];
-    const hist = [];
-    for (let i = 0; i < paceArr.length; i++) {
-      if (paceArr[i] === null || paceArr[i] === undefined) continue;
-      const v = paceArr[i];
-      const color = (v < 0) ? COLORS.paceNeg : COLORS.pacePos;
-      hist.push({ time: allCandles[i].time, value: v, color });
-    }
+    const hist = (indicators.paceNorm || []).map((v, i) => 
+      v != null ? { time: allCandles[i].time, value: v, color: v < 0 ? COLORS.paceNeg : COLORS.pacePos } : null
+    ).filter(Boolean);
     paceProSeries.setData(hist);
-  } else {
-    paceProSeries.setData([]);
-  }
+  } else paceProSeries.setData([]);
 
-  if (opts.rsi) {
-    const rsiArr = indicators.rsi || [];
-    const data = [];
-    for (let i = 0; i < rsiArr.length; i++) {
-      const v = rsiArr[i];
-      if (v === null || v === undefined) continue;
-      data.push({ time: allCandles[i].time, value: v });
-    }
-    rsiSeries.setData(data);
-  } else {
-    rsiSeries.setData([]);
-  }
+  rsiSeries.setData(opts.rsi ? buildSeries(indicators.rsi) : []);
 
   if (opts.macd) {
-    const macd = indicators.macdLine || [];
-    const sig = indicators.macdSignal || [];
-    const hist = indicators.macdHist || [];
-    const macdData = [], sigData = [], histData = [];
-    for (let i = 0; i < allCandles.length; i++) {
-      if (macd[i] !== null && macd[i] !== undefined) macdData.push({ time: allCandles[i].time, value: macd[i] });
-      if (sig[i] !== null && sig[i] !== undefined) sigData.push({ time: allCandles[i].time, value: sig[i] });
-      if (hist[i] !== null && hist[i] !== undefined) histData.push({ time: allCandles[i].time, value: hist[i], color: (hist[i] >= 0 ? COLORS.macdHistPos : COLORS.macdHistNeg) });
-    }
-    macdSeries.setData(macdData);
-    macdSignalSeries.setData(sigData);
-    macdHistSeries.setData(histData);
-  } else {
-    macdSeries.setData([]); macdSignalSeries.setData([]); macdHistSeries.setData([]);
-  }
+    macdSeries.setData(buildSeries(indicators.macdLine));
+    macdSignalSeries.setData(buildSeries(indicators.macdSignal));
+    const hist = (indicators.macdHist || []).map((v, i) =>
+      v != null ? { time: allCandles[i].time, value: v, color: v >= 0 ? COLORS.macdHistPos : COLORS.macdHistNeg } : null
+    ).filter(Boolean);
+    macdHistSeries.setData(hist);
+  } else { macdSeries.setData([]); macdSignalSeries.setData([]); macdHistSeries.setData([]); }
 
-  // ----- BUY / SELL ALERTS -----
-  if (opts.signals) {
-    const indicators = calculateIndicators(allCandles);
-    const tradeSignals = calculateTradeSignals(allCandles, indicators);
-    candleSeries.setMarkers(tradeSignals);
-  } else {
-    candleSeries.setMarkers([]);
-  }
-
-
-  // after updating, resize charts to ensure proper rendering
+  candleSeries.setMarkers(opts.signals ? calculateTradeSignals(allCandles, indicators) : []);
   scheduleResizeCharts();
 }
-function updateReplayIndicators(idx) {
-  const slice = replayData.slice(0, idx + 1);
 
-  updateAllIndicators(slice);
-}
-
-
-function playReplay() {
-  // replay must depend on range
-  if (!rangeSelected) return;
-
-  // build replay data only once
-  if (replayState === 'IDLE') {
-    replayData = resampleCandles(raw1mData, currentTF);
-
-    // 🔥 data MUST be ascending
-    replayData.sort((a, b) => a.time - b.time);
-
-    replayIndex = findReplayStartIndex(replayData);
-
-    // 🔥 seed chart with historical candles
-    const history = replayData.slice(0, replayIndex);
-
-    candleSeries.setData(history);
-
-    // 🔥 seed indicators too
-    updateAllIndicators(history);
-  }
-
-  replayState = 'PLAYING';
-
-  replayTimer = setInterval(() => {
-    if (replayIndex >= replayData.length) {
-      stopReplay();
-      return;
-    }
-
-    const candle = replayData[replayIndex];
-
-    // 🔥 add ONE candle
-    candleSeries.update(candle);
-
-    // 🔥 update indicators incrementally
-    updateReplayIndicators(replayIndex);
-
-    replayIndex++;
-
-    // 🔥 keep last candle visible
-    mainChart.timeScale().scrollToRealTime();
-  }, replaySpeed);
-}
-
-
-function pauseReplay() {
-  if (replayState !== 'PLAYING') return;
-
-  clearInterval(replayTimer);
-  replayTimer = null;
-  replayState = 'PAUSED';
-}
-
-function stopReplay() {
-  clearInterval(replayTimer);
-  replayTimer = null;
-
-  replayState = 'IDLE';
-  replayIndex = 0;
-  replaySource = [];
-
-  // restore full chart
-  allCandles = resampleCandles(raw1mData, currentTF);
-  candleSeries.setData(allCandles);
-  updateAllIndicatorSeries();
-  mainChart.timeScale().fitContent();
-}
-
-function updateAllIndicatorSeriesFrom(candles) {
-  const prev = allCandles;
-  allCandles = candles;
-  updateAllIndicatorSeries();
-  allCandles = prev;
-}
-
-
-// ------------------- loading data (uses your Flask endpoints) -------------------
+// ==================== DATA LOADING ====================
 async function loadLatest(limit = INITIAL_LIMIT) {
   if (loading) return;
   loading = true;
   try {
     const res = await fetch(`/data-latest?limit=${limit}`);
     const j = await res.json();
-
     raw1mData = j.candles || [];
-
-    // 🔥 CRITICAL: ensure ascending time order
-    raw1mData.sort((a, b) => a.time - b.time);
-
     allCandles = resampleCandles(raw1mData, currentTF);
-
-
-    loadedMin = j.min_time;
-    loadedMax = j.max_time;
-
+    loadedMin = j.min_time; loadedMax = j.max_time;
     candleSeries.setData(allCandles);
     updateAllIndicatorSeries();
     mainChart.timeScale().fitContent();
-
-    // 🔥 RANGE CLEARED → disable replay
-    rangeSelected = false;
-    rangeStartTs = null;
-    rangeEndTs = null;
-
-    replayBtn.disabled = true;
-    btnPlay.disabled = true;
-
-    replayStartInputEl.disabled = true;
-    replayStartInputEl.value = '';
-    replayStartInputEl.min = '';
-    replayStartInputEl.max = '';
-
-
-  } finally {
-    loading = false;
-  }
+    rangeSelected = false; rangeStartTs = null; rangeEndTs = null;
+    if (replayBtn) replayBtn.disabled = true;
+    if (rangeBtn) { rangeBtn.textContent = 'Range ▾'; rangeBtn.classList.remove('active'); }
+  } finally { loading = false; }
 }
 
-
 async function loadBefore(limit = INITIAL_LIMIT) {
-  if (loading || loadedMin === null || loadedMin <= window.DATA_MIN_TS) return;
+  if (loading || !loadedMin || loadedMin <= window.DATA_MIN_TS) return;
   const oldRange = mainChart.timeScale().getVisibleLogicalRange();
   loading = true;
   try {
     const res = await fetch(`/data-before?time=${loadedMin}&limit=${limit}`);
     const j = await res.json();
-    if (j.candles && j.candles.length) {
-      const newCount = j.candles.length;
+    if (j.candles?.length) {
+      const newCnt = j.candles.length;
       raw1mData = [...j.candles, ...raw1mData];
       allCandles = resampleCandles(raw1mData, currentTF);
       loadedMin = j.min_time; loadedMax = Math.max(loadedMax, j.max_time);
       candleSeries.setData(allCandles);
       updateAllIndicatorSeries();
-      if (oldRange) mainChart.timeScale().setVisibleLogicalRange({ from: oldRange.from + newCount, to: oldRange.to + newCount });
+      if (oldRange) mainChart.timeScale().setVisibleLogicalRange({ from: oldRange.from + newCnt, to: oldRange.to + newCnt });
       else mainChart.timeScale().fitContent();
     }
   } finally { loading = false; }
 }
 
 async function loadAfter(limit = INITIAL_LIMIT) {
-  if (loading || loadedMax === null || loadedMax >= window.DATA_MAX_TS) return;
+  if (loading || !loadedMax || loadedMax >= window.DATA_MAX_TS) return;
   const oldRange = mainChart.timeScale().getVisibleLogicalRange();
   loading = true;
   try {
     const res = await fetch(`/data-after?time=${loadedMax}&limit=${limit}`);
     const j = await res.json();
-    if (j.candles && j.candles.length) {
-      const newCount = j.candles.length;
-      allCandles = [...allCandles, ...j.candles];
+    if (j.candles?.length) {
+      raw1mData = [...raw1mData, ...j.candles];
+      allCandles = resampleCandles(raw1mData, currentTF);
       loadedMin = Math.min(loadedMin, j.min_time); loadedMax = j.max_time;
       candleSeries.setData(allCandles);
       updateAllIndicatorSeries();
-      if (oldRange) mainChart.timeScale().setVisibleLogicalRange({ from: oldRange.from, to: oldRange.to });
+      if (oldRange) mainChart.timeScale().setVisibleLogicalRange(oldRange);
       else mainChart.timeScale().fitContent();
     }
   } finally { loading = false; }
 }
 
 async function loadRange(startIso, endIso) {
-  const userStartTs = Math.floor(new Date(startIso).getTime() / 1000);
-  const userEndTs   = endIso
-    ? Math.floor(new Date(endIso).getTime() / 1000)
-    : loadedMax;
-
   if (!startIso) return alert("Please select a start datetime");
-
-  const qs = new URLSearchParams({ start: startIso, end: endIso });
-  const res = await fetch(`/data-range?${qs.toString()}`);
+  const res = await fetch(`/data-range?${new URLSearchParams({ start: startIso, end: endIso })}`);
   const j = await res.json();
-
   raw1mData = j.candles || [];
-  // 🔥 CRITICAL: ensure ascending time order
-  raw1mData.sort((a, b) => a.time - b.time);
-
   allCandles = resampleCandles(raw1mData, currentTF);
-
-
-  if (!allCandles.length) {
-    candleSeries.setData([]);
-    updateAllIndicatorSeries();
-    alert("No data found for this range");
-    return;
-  }
-
-  loadedMin = j.min_time;
-  loadedMax = j.max_time;
-
+  if (!allCandles.length) { candleSeries.setData([]); updateAllIndicatorSeries(); return alert("No data found for this range"); }
+  loadedMin = j.min_time; loadedMax = j.max_time;
   candleSeries.setData(allCandles);
   updateAllIndicatorSeries();
   mainChart.timeScale().fitContent();
-
-  // 🔥 RANGE SELECTED
-  rangeSelected = true;
-  rangeStartTs = userStartTs;
-  rangeEndTs   = userEndTs;
-
-
-  // Enable replay controls
-  replayBtn.disabled = false;
-  btnPlay.disabled = false;
-
-  // 🔥 Replay start = exact range start selected by user
-  const startDate = new Date(rangeStartTs * 1000);
-  const endDate   = new Date(rangeEndTs * 1000);
-
-  replayStartInputEl.disabled = false;
-  replayStartInputEl.min = toLocalInput(startDate);
-  replayStartInputEl.max = toLocalInput(endDate);
-  replayStartInputEl.value = toLocalInput(startDate);
-    // ensure replay start is market-aligned
-  const clamped = clampToMarketHours(new Date(rangeStartTs * 1000));
-  replayStartInputEl.value = toLocalInput(clamped);
-
+  rangeSelected = true; rangeStartTs = loadedMin; rangeEndTs = loadedMax;
+  if (replayBtn) replayBtn.disabled = false;
 }
 
+// ==================== TIMEFRAME ====================
+function resampleCandles(data, tfMinutes) {
+  if (tfMinutes === 1) return data.slice();
+  const tfSec = tfMinutes * 60, result = [];
+  let bucket = null;
+  for (const c of data) {
+    const bucketTime = Math.floor(c.time / tfSec) * tfSec;
+    if (!bucket || bucket.time !== bucketTime) {
+      if (bucket) result.push(bucket);
+      bucket = { time: bucketTime, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume || 0 };
+    } else {
+      bucket.high = Math.max(bucket.high, c.high);
+      bucket.low = Math.min(bucket.low, c.low);
+      bucket.close = c.close;
+      bucket.volume += c.volume || 0;
+    }
+  }
+  if (bucket) result.push(bucket);
+  return result;
+}
 
-// ---------------- UI init, toggles, badges, hamburger, fullscreen ----------------
+function applyTimeframe(tf) {
+  if (!raw1mData.length) return;
+  const prevRange = mainChart.timeScale().getVisibleLogicalRange();
+  currentTF = tf;
+  allCandles = resampleCandles(raw1mData, tf);
+  candleSeries.setData(allCandles);
+  updateAllIndicatorSeries();
+  if (prevRange) requestAnimationFrame(() => {
+    try { mainChart.timeScale().setVisibleLogicalRange(prevRange); }
+    catch { mainChart.timeScale().fitContent(); }
+  });
+  else mainChart.timeScale().fitContent();
+  const tfBtn = document.getElementById('tfBtn');
+  if (tfBtn) tfBtn.textContent = `${tf}m ▾`;
+}
+
+// ==================== REPLAY ====================
+function prepareReplayData() {
+  const input = document.getElementById('replayStart');
+  if (!input?.value) return alert('Please select Replay Start time'), false;
+  const replayStartTs = new Date(input.value).getTime() / 1000;
+  if (replayStartTs < rangeStartTs || replayStartTs > rangeEndTs) 
+    return alert('Replay start time must be within the loaded range'), false;
+  const tfData = resampleCandles(raw1mData, currentTF);
+  const past = [], future = [];
+  tfData.forEach(c => (c.time < replayStartTs ? past : future).push(c));
+  if (!future.length) return alert('No candles available after replay start time'), false;
+  stopReplay();
+  replayIndex = 0; allCandles = past; replayCandles = future;
+  candleSeries.setData(allCandles);
+  updateAllIndicatorSeries();
+  mainChart.timeScale().fitContent();
+  return true;
+}
+
+function startReplay(speed) {
+  if (replayState === 'PLAYING') return;
+  replaySpeed = speed || 800;
+  replayState = 'PLAYING';
+  replayTimer = setInterval(() => {
+    if (replayIndex >= replayCandles.length) return stopReplay();
+    const candle = replayCandles[replayIndex];
+    allCandles.push(candle);
+    candleSeries.update(candle);
+    updateAllIndicatorSeries();
+    replayIndex++;
+    mainChart.timeScale().scrollToRealTime();
+  }, replaySpeed);
+  updateReplayUI('playing');
+}
+
+function pauseReplay() {
+  if (replayState !== 'PLAYING') return;
+  clearInterval(replayTimer);
+  replayTimer = null;
+  replayState = 'PAUSED';
+  updateReplayUI('paused');
+}
+
+function stopReplay() {
+  clearInterval(replayTimer);
+  replayTimer = null;
+  replayState = 'IDLE';
+  replayIndex = 0;
+  replayCandles = [];
+  allCandles = resampleCandles(raw1mData, currentTF);
+  candleSeries.setData(allCandles);
+  updateAllIndicatorSeries();
+  mainChart.timeScale().fitContent();
+  updateReplayUI('stopped');
+}
+
+function updateReplayUI(state) {
+  const input = document.getElementById('replayStart');
+  if (input?.value && replayBtn) {
+    replayBtn.textContent = `Replay: ${input.value.replace('T', ' ')}`;
+    replayBtn.classList.add('active');
+  }
+  const playBtn = document.getElementById('btnPlay');
+  const stopBtn = document.getElementById('btnStop');
+  if (playBtn) playBtn.disabled = state === 'playing';
+  if (stopBtn) stopBtn.disabled = state !== 'playing';
+}
+
+// ==================== UI INITIALIZATION ====================
 function setIndicatorBadges() {
-  const set = (id, color) => {
-    const el = document.getElementById(id);
-    if (el) el.style.background = color;
-  };
-  set('badge-sma20', COLORS.sma20);
-  set('badge-sma50', COLORS.sma50);
-  set('badge-ema12', COLORS.ema12);
-  set('badge-bb', COLORS.bb);
-  set('badge-pace', COLORS.pacePos);
-  set('badge-rsi', COLORS.rsi);
+  const set = (id, color) => { const el = document.getElementById(id); if (el) el.style.background = color; };
+  set('badge-sma20', COLORS.sma20); set('badge-sma50', COLORS.sma50);
+  set('badge-ema12', COLORS.ema12); set('badge-bb', COLORS.bb);
+  set('badge-pace', COLORS.pacePos); set('badge-rsi', COLORS.rsi);
   set('badge-macd', COLORS.macd);
 }
 
 async function initUI() {
-    // ---- header elements ----
   rangeBtn = document.getElementById('rangeBtn');
   replayBtn = document.getElementById('replayBtn');
   rangePanel = document.getElementById('rangePanel');
   replayPanel = document.getElementById('replayPanel');
   const rsiContainer = document.getElementById('chart-rsi');
   const macdContainer = document.getElementById('chart-macd');
-  replayStartInputEl = document.getElementById('replayStart');
-  btnPlay = document.getElementById('btnPlay');
-  const rangeStartInput = document.getElementById('start');
-  const rangeEndInput = document.getElementById('end');
 
-
-
-
-  rangeBtn.onclick = () => {
-    rangePanel.classList.toggle('hidden');
-    replayPanel.classList.add('hidden');
+  if (rangeBtn) rangeBtn.onclick = () => {
+    rangePanel?.classList.toggle('hidden');
+    replayPanel?.classList.add('hidden');
   };
 
-  replayBtn.onclick = () => {
-    replayPanel.classList.toggle('hidden');
-    rangePanel.classList.add('hidden');
+  if (replayBtn) replayBtn.onclick = () => {
+    replayPanel?.classList.toggle('hidden');
+    rangePanel?.classList.add('hidden');
   };
 
   const info = await fetch('/data-info').then(r => r.json());
@@ -711,370 +457,93 @@ async function initUI() {
 
   const startEl = document.getElementById('start');
   const endEl = document.getElementById('end');
-  startEl.min = info.min_str; startEl.max = info.max_str;
-  endEl.min = info.min_str; endEl.max = info.max_str;
-  const maxDate = new Date(info.max_ts * 1000);
-  const defaultStart = new Date((info.max_ts - 24 * 3600) * 1000);
-  startEl.value = toLocalInput(defaultStart); endEl.value = toLocalInput(maxDate);
+  if (startEl && endEl) {
+    startEl.min = info.min_str; startEl.max = info.max_str;
+    endEl.min = info.min_str; endEl.max = info.max_str;
+    const maxDate = new Date(info.max_ts * 1000);
+    const defaultStart = new Date((info.max_ts - 24 * 3600) * 1000);
+    const pad = n => String(n).padStart(2, '0');
+    const toLocal = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    startEl.value = toLocal(defaultStart); endEl.value = toLocal(maxDate);
+  }
 
-  // document.getElementById('btnLatest').onclick = () => loadLatest();
   const btnLatest = document.getElementById('btnLatest');
-  if (btnLatest) {
-    btnLatest.onclick = () => loadLatest();
+  if (btnLatest) btnLatest.onclick = () => loadLatest();
+
+  const btnLoad = document.getElementById('btnLoad');
+  if (btnLoad && startEl && endEl && rangeBtn && rangePanel) {
+    btnLoad.onclick = () => {
+      loadRange(startEl.value, endEl.value);
+      rangeBtn.textContent = `Range: ${startEl.value.replace('T',' ')} → ${endEl.value.replace('T',' ')}`;
+      rangeBtn.classList.add('active');
+      rangePanel.classList.add('hidden');
+    };
   }
 
-  document.getElementById('btnLoad').onclick = () => {
-    loadRange(startEl.value, endEl.value);
-
-    rangeBtn.textContent =
-      `Range: ${startEl.value.replace('T',' ')} → ${endEl.value.replace('T',' ')}`;
-    rangeBtn.classList.add('active');
-    rangePanel.classList.add('hidden');
+  // Indicator toggles
+  const addToggle = (id, key, callback) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', e => { opts[key] = e.target.checked; if (callback) callback(e); else updateAllIndicatorSeries(); });
   };
 
+  addToggle('toggle-sma20', 'sma20');
+  addToggle('toggle-sma50', 'sma50');
+  addToggle('toggle-ema12', 'ema12');
+  addToggle('toggle-bb', 'bb');
+  addToggle('paceproToggle', 'pacePro');
+  addToggle('toggle-signals', 'signals');
 
-  // toggles (wire checkboxes)
-  document.getElementById('toggle-sma20').addEventListener('change', e => { opts.sma20 = e.target.checked; updateAllIndicatorSeries(); });
-  document.getElementById('toggle-sma50').addEventListener('change', e => { opts.sma50 = e.target.checked; updateAllIndicatorSeries(); });
-  document.getElementById('toggle-ema12').addEventListener('change', e => { opts.ema12 = e.target.checked; updateAllIndicatorSeries(); });
-  document.getElementById('toggle-bb').addEventListener('change', e => { opts.bb = e.target.checked; updateAllIndicatorSeries(); });
-  document.getElementById('paceproToggle').addEventListener('change', e => { opts.pacePro = e.target.checked; updateAllIndicatorSeries(); });
-  document.getElementById('toggle-signals').addEventListener('change', e => { opts.signals = e.target.checked; updateAllIndicatorSeries(); });
-  
-
-    document.getElementById('toggle-rsi').addEventListener('change', e => {
-      const range = getCurrentVisibleRange();
-      opts.rsi = e.target.checked;
-
-      if (opts.rsi) {
-        rsiContainer.classList.remove('hidden');
-        rsiContainer.style.height = INDICATOR_HEIGHT + 'px';
-      } else {
-        rsiContainer.classList.add('hidden');
-      }
-
-      scheduleResizeCharts();
-
-      requestAnimationFrame(() => {
-        if (opts.rsi) {
-          rsiChart.resize(
-            rsiContainer.clientWidth,
-            rsiContainer.clientHeight
-          );
-        }
-        restoreVisibleRange(range);
-      });
+  addToggle('toggle-rsi', 'rsi', e => {
+    const range = mainChart.timeScale().getVisibleLogicalRange();
+    if (e.target.checked) {
+      rsiContainer.classList.remove('hidden');
+      rsiContainer.style.height = INDICATOR_HEIGHT + 'px';
+    } else rsiContainer.classList.add('hidden');
+    scheduleResizeCharts();
+    requestAnimationFrame(() => {
+      if (e.target.checked) rsiChart.resize(rsiContainer.clientWidth, rsiContainer.clientHeight);
+      if (range) try { mainChart.timeScale().setVisibleLogicalRange(range); } catch {}
     });
+  });
 
-    replayStartInputEl.addEventListener('input', () => {
-      if (!rangeSelected || !replayStartInputEl.value) {
-        btnPlay.disabled = true;
-        return;
-      }
-
-      const ts = Math.floor(new Date(replayStartInputEl.value).getTime() / 1000);
-      btnPlay.disabled = ts < rangeStartTs || ts > rangeEndTs;
+  addToggle('toggle-macd', 'macd', e => {
+    const range = mainChart.timeScale().getVisibleLogicalRange();
+    if (e.target.checked) {
+      macdContainer.classList.remove('hidden');
+      macdContainer.style.height = INDICATOR_HEIGHT + 'px';
+    } else macdContainer.classList.add('hidden');
+    scheduleResizeCharts();
+    requestAnimationFrame(() => {
+      if (e.target.checked) macdChart.resize(macdContainer.clientWidth, macdContainer.clientHeight);
+      if (range) try { mainChart.timeScale().setVisibleLogicalRange(range); } catch {}
     });
-    replayStartInputEl.addEventListener('change', () => {
-      const d = clampToMarketHours(new Date(replayStartInputEl.value));
-      replayStartInputEl.value = toLocalInput(d);
-    });
+  });
 
+  // Timeframe buttons
+  document.querySelectorAll('.tf-option').forEach(btn => {
+    btn.addEventListener('click', () => applyTimeframe(parseInt(btn.dataset.tf, 10)));
+  });
 
-    rangeStartInput.addEventListener('change', () => {
-      const d = clampToMarketHours(new Date(rangeStartInput.value));
-      rangeStartInput.value = toLocalInput(d);
-    });
-
-    rangeEndInput.addEventListener('change', () => {
-      const d = clampToMarketHours(new Date(rangeEndInput.value));
-      rangeEndInput.value = toLocalInput(d);
-    });
-
-
-
-    document.getElementById('toggle-macd').addEventListener('change', e => {
-      const range = getCurrentVisibleRange();
-      opts.macd = e.target.checked;
-
-      if (opts.macd) {
-        macdContainer.classList.remove('hidden');
-        macdContainer.style.height = INDICATOR_HEIGHT + 'px';
-      } else {
-        macdContainer.classList.add('hidden');
-      }
-
-      scheduleResizeCharts();
-
-      requestAnimationFrame(() => {
-        if (opts.macd) {
-          macdChart.resize(
-            macdContainer.clientWidth,
-            macdContainer.clientHeight
-          );
-        }
-        restoreVisibleRange(range);
-      });
-    });
-
-    document.querySelectorAll('.tf-option').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const tf = parseInt(btn.dataset.tf, 10);
-        applyTimeframe(tf);
-      });
-    });
-
-
-    // ---- Replay controls ----
-  const toggleReplay = document.getElementById('toggle-replay');
-  if (toggleReplay) {
-    toggleReplay.addEventListener('change', e => {
-      replayMode = e.target.checked;
-      if (!replayMode) stopReplay();
-    });
-  }
-
-
-  document.getElementById('btnPlay').onclick = () => {
-    if (!replayMode) replayMode = true;
-
-    const ok = prepareReplayData();
-    if (!ok) return;
-
-    startReplay(Number(document.getElementById('replaySpeed').value) || 800);
-    setReplayStatus('playing');
+  // Replay controls
+  const btnPlay = document.getElementById('btnPlay');
+  if (btnPlay) btnPlay.onclick = () => {
+    if (prepareReplayData()) startReplay(Number(document.getElementById('replaySpeed')?.value) || 800);
   };
 
-  document.getElementById('btnStop').onclick = () => {
-    stopReplay();
-    setReplayStatus('stopped');
-  };
+  const btnStop = document.getElementById('btnStop');
+  if (btnStop) btnStop.onclick = stopReplay;
 
-
-  // fullscreen button (only main chart fullscreen)
+  // Fullscreen
   const fsBtn = document.getElementById('fullscreenBtn');
-  fsBtn.addEventListener('click', () => {
-    const isFs = document.body.classList.toggle('fullscreen-mode');
-    // when entering fullscreen, hide sidebar and subcharts; when leaving restore
-    if (!isFs) {
-      // restore
-    } else {
-      // ensure rsi/macd hidden
-    }
-    // when toggling fullscreen, re-calc sizes
+  if (fsBtn) fsBtn.addEventListener('click', () => {
+    document.body.classList.toggle('fullscreen-mode');
     scheduleResizeCharts();
   });
-  // when window resizes, resize charts
-  window.addEventListener('resize', () => scheduleResizeCharts());
+
+  window.addEventListener('resize', scheduleResizeCharts);
 }
 
-function setReplayStatus(state) {
-  const start = document.getElementById('replayStart').value.replace('T',' ');
-  replayBtn.textContent = `Replay: ${start}`;
-  replayBtn.classList.add('active');
-
-  document.getElementById('btnPlay').disabled = state === 'playing';
-  document.getElementById('btnStop').disabled = state !== 'playing';
-}
-
-function getCurrentVisibleRange() {
-  try {
-    return mainChart.timeScale().getVisibleLogicalRange();
-  } catch {
-    return null;
-  }
-}
-function isWithinMarketHours(date) {
-  const h = date.getHours();
-  const m = date.getMinutes();
-
-  const afterOpen =
-    h > MARKET_OPEN_HOUR ||
-    (h === MARKET_OPEN_HOUR && m >= MARKET_OPEN_MIN);
-
-  const beforeClose =
-    h < MARKET_CLOSE_HOUR ||
-    (h === MARKET_CLOSE_HOUR && m <= MARKET_CLOSE_MIN);
-
-  return afterOpen && beforeClose;
-}
-function clampToMarketHours(date) {
-  const d = new Date(date);
-
-  // before market open → snap to open
-  if (!isWithinMarketHours(d)) {
-    if (
-      d.getHours() < MARKET_OPEN_HOUR ||
-      (d.getHours() === MARKET_OPEN_HOUR && d.getMinutes() < MARKET_OPEN_MIN)
-    ) {
-      d.setHours(MARKET_OPEN_HOUR, MARKET_OPEN_MIN, 0, 0);
-    } else {
-      // after market close → snap to close
-      d.setHours(MARKET_CLOSE_HOUR, MARKET_CLOSE_MIN, 0, 0);
-    }
-  }
-
-  return d;
-}
-
-
-function resampleCandles(data, tfMinutes) {
-  if (data.length > 1 && data[0].time > data[data.length - 1].time) {
-    data = data.slice().sort((a, b) => a.time - b.time);
-  }
-
-  if (tfMinutes === 1) return data.slice(); // copy
-
-  const tfSec = tfMinutes * 60;
-  const result = [];
-
-  let bucket = null;
-
-  for (const c of data) {
-    const bucketTime = Math.floor(c.time / tfSec) * tfSec;
-
-    if (!bucket || bucket.time !== bucketTime) {
-      if (bucket) result.push(bucket);
-
-      bucket = {
-        time: bucketTime,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-        volume: c.volume || 0
-      };
-    } else {
-      bucket.high = Math.max(bucket.high, c.high);
-      bucket.low  = Math.min(bucket.low, c.low);
-      bucket.close = c.close;
-      bucket.volume += c.volume || 0;
-    }
-  }
-
-  if (bucket) result.push(bucket);
-  return result;
-}
-
-function applyTimeframe(tf) {
-  if (!raw1mData.length) return;
-
-  const prevRange = mainChart.timeScale().getVisibleLogicalRange();
-
-  currentTF = tf;
-  allCandles = resampleCandles(raw1mData, tf);
-
-  candleSeries.setData(allCandles);
-  updateAllIndicatorSeries();
-
-  if (prevRange) {
-    requestAnimationFrame(() => {
-      mainChart.timeScale().setVisibleLogicalRange(prevRange);
-    });
-  } else {
-    mainChart.timeScale().fitContent();
-  }
-
-  document.getElementById('tfBtn').textContent = `${tf}m ▾`;
-}
-
-
-function restoreVisibleRange(range) {
-  if (!range) return;
-  try {
-    mainChart.timeScale().setVisibleLogicalRange(range);
-  } catch {
-    // ignore
-  }
-}
-
-function updateLayout() {
-  const area = document.getElementById('chart-area');
-  const totalHeight = area.clientHeight;
-
-  let usedHeight = 0;
-  if (opts.rsi)  usedHeight += INDICATOR_HEIGHT;
-  if (opts.macd) usedHeight += INDICATOR_HEIGHT;
-
-  let mainHeight = totalHeight - usedHeight;
-  if (mainHeight < MAIN_MIN_HEIGHT) {
-    mainHeight = MAIN_MIN_HEIGHT;
-  }
-
-  // DOM heights
-  chartMain.style.height = mainHeight + 'px';
-
-  if (opts.rsi) {
-    chartRSI.style.height = INDICATOR_HEIGHT + 'px';
-  }
-
-  if (opts.macd) {
-    chartMACD.style.height = INDICATOR_HEIGHT + 'px';
-  }
-
-  // Lightweight Charts heights
-  mainChart.applyOptions({ height: mainHeight });
-
-  if (opts.rsi) {
-    rsiChart.applyOptions({ height: INDICATOR_HEIGHT });
-  }
-
-  if (opts.macd) {
-    macdChart.applyOptions({ height: INDICATOR_HEIGHT });
-  }
-}
-
-
-
-function prepareReplayData() {
-  if (!rangeSelected) {
-    alert('Please select a range before replay');
-    return false;
-  }
-
-  const replayStartInput = document.getElementById('replayStart').value;
-  if (!replayStartInput) {
-    alert('Please select Replay Start time');
-    return false;
-  }
-
-
-  const replayStartTs = new Date(replayStartInput).getTime() / 1000;
-  const tfData = resampleCandles(raw1mData, currentTF);
-  // Split existing loaded candles
-  const past = [];
-  const future = [];
-
-  for (const c of tfData) {
-    if (c.time < replayStartTs) past.push(c);
-    else future.push(c);
-  }
-
-  if (!future.length) {
-    alert('No candles available after replay start time');
-    return false;
-  }
-
-  // Reset state
-  stopReplay();
-  replayIndex = 0;
-  allCandles = past;
-  replayCandles = future;
-
-  candleSeries.setData(allCandles);
-  updateAllIndicatorSeries();
-  mainChart.timeScale().fitContent();
-
-  return true;
-}
-
-// helper to format datetime-local
-function toLocalInput(d) {
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-// ---------------- chart resizing logic ----------------
+// ==================== CHART RESIZING ====================
 let resizeTimer = null;
 function scheduleResizeCharts() {
   if (resizeTimer) clearTimeout(resizeTimer);
@@ -1082,71 +551,31 @@ function scheduleResizeCharts() {
 }
 
 function resizeCharts() {
-  // resize each chart to its container size
   try {
     const mainContainer = document.getElementById('chart-main');
     const rsiContainer = document.getElementById('chart-rsi');
     const macdContainer = document.getElementById('chart-macd');
 
-    const wMain = mainContainer.clientWidth || mainContainer.offsetWidth;
-    const hMain = mainContainer.clientHeight || mainContainer.offsetHeight;
-
-    if (wMain > 0 && hMain > 0) {
-      mainChart.resize(wMain, hMain);
+    if (mainContainer) {
+      const w = mainContainer.clientWidth || mainContainer.offsetWidth;
+      const h = mainContainer.clientHeight || mainContainer.offsetHeight;
+      if (w > 0 && h > 0) mainChart.resize(w, h);
     }
 
-    if (getComputedStyle(rsiContainer).display !== 'none') {
+    if (rsiContainer && getComputedStyle(rsiContainer).display !== 'none') {
       rsiChart.resize(rsiContainer.clientWidth, rsiContainer.clientHeight);
     }
-    if (getComputedStyle(macdContainer).display !== 'none') {
+
+    if (macdContainer && getComputedStyle(macdContainer).display !== 'none') {
       macdChart.resize(macdContainer.clientWidth, macdContainer.clientHeight);
     }
-  } catch (e) {
-    // ignore
-  }
+  } catch (e) { console.error('Resize error:', e); }
 }
 
-function startReplay(speed) {
-  if (replayTimer) return;
-
-  replayTimer = setInterval(() => {
-    if (replayIndex >= replayCandles.length) {
-      stopReplay();
-      return;
-    }
-
-    allCandles.push(replayCandles[replayIndex]);
-    candleSeries.setData(allCandles);
-    updateAllIndicatorSeries();
-
-    replayIndex++;
-  }, speed);
-}
-
-function toLocalInput(date) {
-  const pad = n => String(n).padStart(2, '0');
-  return (
-    date.getFullYear() + '-' +
-    pad(date.getMonth() + 1) + '-' +
-    pad(date.getDate()) + 'T' +
-    pad(date.getHours()) + ':' +
-    pad(date.getMinutes())
-  );
-}
-
-function findReplayStartIndex(data, startTs) {
-  return data.findIndex(c => c.time >= startTs);
-}
-
-
-
-
-// ------------------ boot ------------------
+// ==================== BOOT ====================
 (async function init() {
   createCharts();
   await initUI();
   await loadLatest();
-
-  // force correct size after header layout
   setTimeout(resizeCharts, 0);
 })();
