@@ -33,6 +33,15 @@ let replayData = [];
 let rangeSelected = false;
 let rangeStartTs = null;
 let rangeEndTs = null;
+let replayStartInputEl = null;
+
+let replaySource = [];   // full TF data
+const MARKET_OPEN_HOUR = 9;
+const MARKET_OPEN_MIN = 15;
+
+const MARKET_CLOSE_HOUR = 15;
+const MARKET_CLOSE_MIN = 30;
+
 
 
 
@@ -431,19 +440,33 @@ function updateAllIndicatorSeries() {
   // after updating, resize charts to ensure proper rendering
   scheduleResizeCharts();
 }
+function updateReplayIndicators(idx) {
+  const slice = replayData.slice(0, idx + 1);
+
+  updateAllIndicators(slice);
+}
+
 
 function playReplay() {
-  if (replayState === 'PLAYING') return;
+  // replay must depend on range
+  if (!rangeSelected) return;
 
-  // ▶️ First start
+  // build replay data only once
   if (replayState === 'IDLE') {
     replayData = resampleCandles(raw1mData, currentTF);
+
+    // 🔥 data MUST be ascending
+    replayData.sort((a, b) => a.time - b.time);
+
     replayIndex = findReplayStartIndex(replayData);
 
-    // show candles up to replay start
-    allCandles = replayData.slice(0, replayIndex);
-    candleSeries.setData(allCandles);
-    updateAllIndicatorSeries();
+    // 🔥 seed chart with historical candles
+    const history = replayData.slice(0, replayIndex);
+
+    candleSeries.setData(history);
+
+    // 🔥 seed indicators too
+    updateAllIndicators(history);
   }
 
   replayState = 'PLAYING';
@@ -456,42 +479,48 @@ function playReplay() {
 
     const candle = replayData[replayIndex];
 
-    // 1️⃣ add next candle
-    allCandles.push(candle);
+    // 🔥 add ONE candle
     candleSeries.update(candle);
 
-    // 2️⃣ update indicators on visible data only
-    updateAllIndicatorSeries();
+    // 🔥 update indicators incrementally
+    updateReplayIndicators(replayIndex);
 
     replayIndex++;
 
-    // 3️⃣ 🔥 keep last candle visible
+    // 🔥 keep last candle visible
     mainChart.timeScale().scrollToRealTime();
   }, replaySpeed);
 }
+
 
 function pauseReplay() {
   if (replayState !== 'PLAYING') return;
 
   clearInterval(replayTimer);
   replayTimer = null;
-
   replayState = 'PAUSED';
 }
+
 function stopReplay() {
   clearInterval(replayTimer);
   replayTimer = null;
 
   replayState = 'IDLE';
   replayIndex = 0;
-  replayData = [];
+  replaySource = [];
 
-  // restore full dataset
+  // restore full chart
   allCandles = resampleCandles(raw1mData, currentTF);
   candleSeries.setData(allCandles);
   updateAllIndicatorSeries();
-
   mainChart.timeScale().fitContent();
+}
+
+function updateAllIndicatorSeriesFrom(candles) {
+  const prev = allCandles;
+  allCandles = candles;
+  updateAllIndicatorSeries();
+  allCandles = prev;
 }
 
 
@@ -504,7 +533,12 @@ async function loadLatest(limit = INITIAL_LIMIT) {
     const j = await res.json();
 
     raw1mData = j.candles || [];
+
+    // 🔥 CRITICAL: ensure ascending time order
+    raw1mData.sort((a, b) => a.time - b.time);
+
     allCandles = resampleCandles(raw1mData, currentTF);
+
 
     loadedMin = j.min_time;
     loadedMax = j.max_time;
@@ -513,12 +547,19 @@ async function loadLatest(limit = INITIAL_LIMIT) {
     updateAllIndicatorSeries();
     mainChart.timeScale().fitContent();
 
-    // 🔥 RANGE CLEARED
+    // 🔥 RANGE CLEARED → disable replay
     rangeSelected = false;
     rangeStartTs = null;
     rangeEndTs = null;
 
-    if (replayBtn) replayBtn.disabled = true;
+    replayBtn.disabled = true;
+    btnPlay.disabled = true;
+
+    replayStartInputEl.disabled = true;
+    replayStartInputEl.value = '';
+    replayStartInputEl.min = '';
+    replayStartInputEl.max = '';
+
 
   } finally {
     loading = false;
@@ -566,6 +607,11 @@ async function loadAfter(limit = INITIAL_LIMIT) {
 }
 
 async function loadRange(startIso, endIso) {
+  const userStartTs = Math.floor(new Date(startIso).getTime() / 1000);
+  const userEndTs   = endIso
+    ? Math.floor(new Date(endIso).getTime() / 1000)
+    : loadedMax;
+
   if (!startIso) return alert("Please select a start datetime");
 
   const qs = new URLSearchParams({ start: startIso, end: endIso });
@@ -573,7 +619,11 @@ async function loadRange(startIso, endIso) {
   const j = await res.json();
 
   raw1mData = j.candles || [];
+  // 🔥 CRITICAL: ensure ascending time order
+  raw1mData.sort((a, b) => a.time - b.time);
+
   allCandles = resampleCandles(raw1mData, currentTF);
+
 
   if (!allCandles.length) {
     candleSeries.setData([]);
@@ -591,10 +641,26 @@ async function loadRange(startIso, endIso) {
 
   // 🔥 RANGE SELECTED
   rangeSelected = true;
-  rangeStartTs = loadedMin;
-  rangeEndTs = loadedMax;
+  rangeStartTs = userStartTs;
+  rangeEndTs   = userEndTs;
 
-  if (replayBtn) replayBtn.disabled = false;
+
+  // Enable replay controls
+  replayBtn.disabled = false;
+  btnPlay.disabled = false;
+
+  // 🔥 Replay start = exact range start selected by user
+  const startDate = new Date(rangeStartTs * 1000);
+  const endDate   = new Date(rangeEndTs * 1000);
+
+  replayStartInputEl.disabled = false;
+  replayStartInputEl.min = toLocalInput(startDate);
+  replayStartInputEl.max = toLocalInput(endDate);
+  replayStartInputEl.value = toLocalInput(startDate);
+    // ensure replay start is market-aligned
+  const clamped = clampToMarketHours(new Date(rangeStartTs * 1000));
+  replayStartInputEl.value = toLocalInput(clamped);
+
 }
 
 
@@ -621,6 +687,12 @@ async function initUI() {
   replayPanel = document.getElementById('replayPanel');
   const rsiContainer = document.getElementById('chart-rsi');
   const macdContainer = document.getElementById('chart-macd');
+  replayStartInputEl = document.getElementById('replayStart');
+  btnPlay = document.getElementById('btnPlay');
+  const rangeStartInput = document.getElementById('start');
+  const rangeEndInput = document.getElementById('end');
+
+
 
 
   rangeBtn.onclick = () => {
@@ -693,6 +765,32 @@ async function initUI() {
         restoreVisibleRange(range);
       });
     });
+
+    replayStartInputEl.addEventListener('input', () => {
+      if (!rangeSelected || !replayStartInputEl.value) {
+        btnPlay.disabled = true;
+        return;
+      }
+
+      const ts = Math.floor(new Date(replayStartInputEl.value).getTime() / 1000);
+      btnPlay.disabled = ts < rangeStartTs || ts > rangeEndTs;
+    });
+    replayStartInputEl.addEventListener('change', () => {
+      const d = clampToMarketHours(new Date(replayStartInputEl.value));
+      replayStartInputEl.value = toLocalInput(d);
+    });
+
+
+    rangeStartInput.addEventListener('change', () => {
+      const d = clampToMarketHours(new Date(rangeStartInput.value));
+      rangeStartInput.value = toLocalInput(d);
+    });
+
+    rangeEndInput.addEventListener('change', () => {
+      const d = clampToMarketHours(new Date(rangeEndInput.value));
+      rangeEndInput.value = toLocalInput(d);
+    });
+
 
 
     document.getElementById('toggle-macd').addEventListener('change', e => {
@@ -786,8 +884,45 @@ function getCurrentVisibleRange() {
     return null;
   }
 }
+function isWithinMarketHours(date) {
+  const h = date.getHours();
+  const m = date.getMinutes();
+
+  const afterOpen =
+    h > MARKET_OPEN_HOUR ||
+    (h === MARKET_OPEN_HOUR && m >= MARKET_OPEN_MIN);
+
+  const beforeClose =
+    h < MARKET_CLOSE_HOUR ||
+    (h === MARKET_CLOSE_HOUR && m <= MARKET_CLOSE_MIN);
+
+  return afterOpen && beforeClose;
+}
+function clampToMarketHours(date) {
+  const d = new Date(date);
+
+  // before market open → snap to open
+  if (!isWithinMarketHours(d)) {
+    if (
+      d.getHours() < MARKET_OPEN_HOUR ||
+      (d.getHours() === MARKET_OPEN_HOUR && d.getMinutes() < MARKET_OPEN_MIN)
+    ) {
+      d.setHours(MARKET_OPEN_HOUR, MARKET_OPEN_MIN, 0, 0);
+    } else {
+      // after market close → snap to close
+      d.setHours(MARKET_CLOSE_HOUR, MARKET_CLOSE_MIN, 0, 0);
+    }
+  }
+
+  return d;
+}
+
 
 function resampleCandles(data, tfMinutes) {
+  if (data.length > 1 && data[0].time > data[data.length - 1].time) {
+    data = data.slice().sort((a, b) => a.time - b.time);
+  }
+
   if (tfMinutes === 1) return data.slice(); // copy
 
   const tfSec = tfMinutes * 60;
@@ -892,11 +1027,17 @@ function updateLayout() {
 
 
 function prepareReplayData() {
+  if (!rangeSelected) {
+    alert('Please select a range before replay');
+    return false;
+  }
+
   const replayStartInput = document.getElementById('replayStart').value;
   if (!replayStartInput) {
     alert('Please select Replay Start time');
     return false;
   }
+
 
   const replayStartTs = new Date(replayStartInput).getTime() / 1000;
   const tfData = resampleCandles(raw1mData, currentTF);
@@ -981,6 +1122,23 @@ function startReplay(speed) {
     replayIndex++;
   }, speed);
 }
+
+function toLocalInput(date) {
+  const pad = n => String(n).padStart(2, '0');
+  return (
+    date.getFullYear() + '-' +
+    pad(date.getMonth() + 1) + '-' +
+    pad(date.getDate()) + 'T' +
+    pad(date.getHours()) + ':' +
+    pad(date.getMinutes())
+  );
+}
+
+function findReplayStartIndex(data, startTs) {
+  return data.findIndex(c => c.time >= startTs);
+}
+
+
 
 
 // ------------------ boot ------------------
