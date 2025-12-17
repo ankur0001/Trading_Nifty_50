@@ -88,7 +88,9 @@ def data_range():
     # Accept ISO strings or unix secs for start/end
     s = request.args.get("start")
     e = request.args.get("end", None)
-    limit = int(request.args.get("limit", INITIAL_LIMIT))
+    # For range queries, use a very high limit or no limit to get all data in range
+    # Default to 50000 to handle large ranges (e.g., months of data)
+    limit = int(request.args.get("limit", 50000))
 
     if not s:
         return jsonify({"candles": [], "min_time": MIN_TS, "max_time": MAX_TS})
@@ -118,7 +120,11 @@ def data_range():
     else:
         end_dt = start_dt + pd.Timedelta(hours=24)
 
-    rows = df[(df[DATETIME_COL] >= start_dt) & (df[DATETIME_COL] <= end_dt)].head(limit)
+    # Filter by date range first, then apply limit if specified
+    # For range queries, we want all data in the range, so use a high limit
+    rows = df[(df[DATETIME_COL] >= start_dt) & (df[DATETIME_COL] <= end_dt)]
+    if limit > 0:
+        rows = rows.head(limit)
     candles = rows_to_candles(rows)
     return jsonify({
         "candles": candles,

@@ -25,6 +25,8 @@ body {
     /* 🔥 THIS IS THE FIX */
     height: 100vh;
     overflow: hidden;
+    overscroll-behavior-x: none;
+    overscroll-behavior-y: none;
 }
 
 /* sidebar */
@@ -273,7 +275,43 @@ button {
 
 .dropdown:hover .dropdown-panel,
 .dropdown-panel:hover {
+  display: block !important;
+}
+
+.dropdown-panel.left {
+  right: auto;
+  left: 0;
+}
+
+.dropdown.left .dropdown-panel {
+  right: auto;
+  left: 0;
+}
+
+.tf-option {
   display: block;
+  width: 100%;
+  padding: 8px 12px;
+  margin: 2px 0;
+  background: #fff;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.tf-option:hover {
+  background: #f5f5f5;
+  border-color: #ddd;
+}
+
+.tf-option.active {
+  background: #E3F2FD;
+  border-color: #1565C0;
+  color: #1565C0;
+  font-weight: 600;
 }
 
 
@@ -311,6 +349,36 @@ button {
     gap: 6px;
 }
 
+#replayTimeIndicator {
+    padding: 8px;
+    font-weight: bold;
+    color: #1565C0;
+    text-align: center;
+    background: #E3F2FD;
+    border-radius: 4px;
+    margin: 8px 0;
+    font-size: 13px;
+}
+
+.replay-actions button {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    background: white;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.replay-actions button:hover:not(:disabled) {
+    background: #f5f5f5;
+}
+
+.replay-actions button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .header-btn:hover,
 .status-btn:hover {
     background: #f5f5f5;
@@ -322,6 +390,9 @@ button {
     flex-direction: column;
     height: 100%;
     min-height: 0;
+    overscroll-behavior-x: contain;
+    overscroll-behavior-y: contain;
+    touch-action: pan-x pan-y;
 }
 
 #chart-main {
@@ -329,6 +400,9 @@ button {
     height: 0;
     /* JS will control this */
     min-height: 200px;
+    overscroll-behavior-x: contain;
+    overscroll-behavior-y: contain;
+    touch-action: pan-x pan-y;
 }
 
 #chart-rsi,
