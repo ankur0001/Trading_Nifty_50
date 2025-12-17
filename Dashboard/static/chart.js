@@ -2,7 +2,6 @@
 // Advanced candlestick chart with technical indicators, replay, and range selection
 // Uses endpoints: /data-info, /data-latest, /data-before, /data-after, /data-range
 
-
 const INITIAL_LIMIT = 300;
 const INDICATOR_HEIGHT = 160;
 const MAIN_MIN_HEIGHT = 200;
@@ -10,7 +9,6 @@ const MARKET_OPEN_HOUR = 9;
 const MARKET_OPEN_MIN = 15;
 const MARKET_CLOSE_HOUR = 15;
 const MARKET_CLOSE_MIN = 30;
-
 
 // Chart instances & series
 let mainChart, rsiChart, macdChart;
@@ -21,7 +19,6 @@ let paceProSeries;
 let rsiSeries;
 let macdSeries, macdSignalSeries, macdHistSeries;
 
-
 // Data state
 let allCandles = [];          // current timeframe candles (ascending by time)
 let raw1mData = [];           // original 1-minute candles
@@ -29,7 +26,6 @@ let currentTF = 1;            // current timeframe in minutes
 let loadedMin = null;
 let loadedMax = null;
 let loading = false;
-
 
 // Replay state
 let replayMode = false;
@@ -48,11 +44,9 @@ let replaySpeed = 800;
 let replayTimeIndicator = null;
 let cachedIndicators = null;  // Cache for incremental updates
 
-
 // UI elements
 let rangeBtn, replayBtn;
 let rangePanel, replayPanel;
-
 
 // Indicator colors
 const COLORS = {
@@ -69,7 +63,6 @@ const COLORS = {
   macdHistNeg: '#FFB300'
 };
 
-
 // Indicator toggles
 const opts = {
   sma20: true,
@@ -82,10 +75,8 @@ const opts = {
   signals: false
 };
 
-
 // Chart resizing
 let resizeTimer = null;
-
 
 // ========== CHART CREATION ==========
 function createCharts() {
@@ -105,7 +96,6 @@ function createCharts() {
     handleScale: { mouseWheel: true, pinch: true }
   });
 
-
   candleSeries = mainChart.addCandlestickSeries({
     upColor: '#26a69a',
     downColor: '#ef5350',
@@ -113,7 +103,6 @@ function createCharts() {
     wickDownColor: '#ef5350',
     borderVisible: false
   });
-
 
   // Overlay series
   sma20Series = mainChart.addLineSeries({ 
@@ -132,7 +121,6 @@ function createCharts() {
     lastValueVisible: false 
   });
 
-
   bbMiddleSeries = mainChart.addLineSeries({ 
     color: COLORS.bb, 
     lineWidth: 1.2, 
@@ -149,7 +137,6 @@ function createCharts() {
     lastValueVisible: false 
   });
 
-
   paceProSeries = mainChart.addHistogramSeries({
     color: COLORS.pacePos,
     base: 0,
@@ -157,7 +144,6 @@ function createCharts() {
     priceScaleId: '',
     scaleMargins: { top: 0.82, bottom: 0 }
   });
-
 
   // RSI chart
   rsiChart = LightweightCharts.createChart(document.getElementById('chart-rsi'), {
@@ -171,7 +157,6 @@ function createCharts() {
     }
   });
   rsiSeries = rsiChart.addLineSeries({ color: COLORS.rsi, lineWidth: 2 });
-
 
   // MACD chart
   macdChart = LightweightCharts.createChart(document.getElementById('chart-macd'), {
@@ -195,10 +180,8 @@ function createCharts() {
     lineWidth: 1.5 
   });
 
-
   // Sync time scales
   syncTimeScales();
-
 
   // Lazy-load detection on main chart (disabled during replay)
   mainChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
@@ -218,21 +201,17 @@ function createCharts() {
     }
   });
 
-
   // Set badge colors in sidebar
   setIndicatorBadges();
-
 
   // Prevent browser navigation gestures from interfering with chart scrolling
   preventBrowserNavigationGestures();
 }
 
-
 function syncTimeScales() {
   const tsMain = mainChart.timeScale();
   const tsRsi = rsiChart.timeScale();
   const tsMacd = macdChart.timeScale();
-
 
   tsMain.subscribeVisibleLogicalRangeChange(range => {
     if (!range) return;
@@ -253,7 +232,6 @@ function syncTimeScales() {
   });
 }
 
-
 // ========== INDICATOR CALCULATIONS ==========
 function sma(values, period) {
   const out = [];
@@ -266,7 +244,6 @@ function sma(values, period) {
   }
   return out;
 }
-
 
 function ema(values, period) {
   const out = [];
@@ -290,7 +267,6 @@ function ema(values, period) {
   return out;
 }
 
-
 function stddev(values, period) {
   const out = [];
   for (let i = 0; i < values.length; i++) {
@@ -305,7 +281,6 @@ function stddev(values, period) {
   }
   return out;
 }
-
 
 function emaFilled(series, period) {
   const out = [];
@@ -338,7 +313,6 @@ function emaFilled(series, period) {
   }
   return out;
 }
-
 
 function calculateRSI(closes, period = 14) {
   const out = [];
@@ -376,7 +350,6 @@ function calculateRSI(closes, period = 14) {
   return out;
 }
 
-
 function normalizeAndSmooth(values, period = 5) {
   if (!values.length) return [];
   const absMax = Math.max(...values.map(v => Math.abs(v))) || 1;
@@ -395,17 +368,14 @@ function normalizeAndSmooth(values, period = 5) {
   return smoothed;
 }
 
-
 function calculateIndicators(candles) {
   if (!candles.length) return {};
   const closes = candles.map(c => c.close);
-
 
   const sma20 = sma(closes, 20);
   const sma50 = sma(closes, 50);
   const ema12 = ema(closes, 12);
   const ema26 = ema(closes, 26);
-
 
   const bbMid = sma20;
   const bbStd = stddev(closes, 20);
@@ -416,7 +386,6 @@ function calculateIndicators(candles) {
     (m === null || bbStd[i] === null) ? null : m - 2 * bbStd[i]
   );
 
-
   const paceRaw = [];
   for (let i = 0; i < candles.length; i++) {
     const c = candles[i];
@@ -425,9 +394,7 @@ function calculateIndicators(candles) {
   }
   const paceNorm = normalizeAndSmooth(paceRaw, 5);
 
-
   const rsi = calculateRSI(closes, 14);
-
 
   const macdLine = [];
   for (let i = 0; i < closes.length; i++) {
@@ -440,7 +407,6 @@ function calculateIndicators(candles) {
     (v === null || macdSignal[i] === null) ? null : v - macdSignal[i]
   );
 
-
   return { 
     sma20, sma50, ema12, 
     bbUpper, bbMiddle: bbMid, bbLower, 
@@ -449,16 +415,13 @@ function calculateIndicators(candles) {
   };
 }
 
-
 function calculateTradeSignals(candles, indicators) {
   const markers = [];
-
 
   for (let i = 1; i < candles.length; i++) {
     const ema = indicators.ema12;
     const sma = indicators.sma20;
     const rsi = indicators.rsi;
-
 
     // BUY signal: EMA crosses above SMA and RSI > 40
     if (
@@ -475,7 +438,6 @@ function calculateTradeSignals(candles, indicators) {
         text: 'BUY'
       });
     }
-
 
     // SELL signal: EMA crosses below SMA and RSI < 60
     if (
@@ -496,12 +458,10 @@ function calculateTradeSignals(candles, indicators) {
   return markers;
 }
 
-
 // ========== UPDATE INDICATOR SERIES ==========
 function updateAllIndicatorSeries() {
   const indicators = calculateIndicators(allCandles);
   cachedIndicators = indicators;  // Cache for incremental updates
-
 
   function buildSeries(arr) {
     if (!arr || !arr.length) return [];
@@ -513,7 +473,6 @@ function updateAllIndicatorSeries() {
     }
     return out;
   }
-
 
   // Overlay indicators
   if (opts.sma20) {
@@ -534,7 +493,6 @@ function updateAllIndicatorSeries() {
     ema12Series.setData([]);
   }
 
-
   if (opts.bb) {
     bbMiddleSeries.setData(buildSeries(indicators.bbMiddle));
     bbUpperSeries.setData(buildSeries(indicators.bbUpper));
@@ -544,7 +502,6 @@ function updateAllIndicatorSeries() {
     bbUpperSeries.setData([]);
     bbLowerSeries.setData([]);
   }
-
 
   if (opts.pacePro) {
     const paceArr = indicators.paceNorm || [];
@@ -560,7 +517,6 @@ function updateAllIndicatorSeries() {
     paceProSeries.setData([]);
   }
 
-
   // RSI
   if (opts.rsi) {
     const rsiArr = indicators.rsi || [];
@@ -574,7 +530,6 @@ function updateAllIndicatorSeries() {
   } else {
     rsiSeries.setData([]);
   }
-
 
   // MACD
   if (opts.macd) {
@@ -606,7 +561,6 @@ function updateAllIndicatorSeries() {
     macdHistSeries.setData([]);
   }
 
-
   // Trade signals
   if (opts.signals) {
     const tradeSignals = calculateTradeSignals(allCandles, indicators);
@@ -615,11 +569,9 @@ function updateAllIndicatorSeries() {
     candleSeries.setMarkers([]);
   }
 
-
   // Resize charts after updating
   scheduleResizeCharts();
 }
-
 
 // ========== DATA LOADING ==========
 async function loadLatest(limit = INITIAL_LIMIT) {
@@ -629,26 +581,21 @@ async function loadLatest(limit = INITIAL_LIMIT) {
     const res = await fetch(`/data-latest?limit=${limit}`);
     const j = await res.json();
 
-
     raw1mData = j.candles || [];
     raw1mData.sort((a, b) => a.time - b.time);
-
 
     allCandles = resampleCandles(raw1mData, currentTF);
     loadedMin = j.min_time;
     loadedMax = j.max_time;
 
-
     candleSeries.setData(allCandles);
     updateAllIndicatorSeries();
     mainChart.timeScale().fitContent();
-
 
     // Clear range selection
     rangeSelected = false;
     rangeStartTs = null;
     rangeEndTs = null;
-
 
     if (replayBtn) replayBtn.disabled = true;
     if (btnPlay) btnPlay.disabled = true;
@@ -662,7 +609,6 @@ async function loadLatest(limit = INITIAL_LIMIT) {
     loading = false;
   }
 }
-
 
 async function loadBefore(limit = INITIAL_LIMIT) {
   // Don't load during replay or when preparing replay
@@ -697,7 +643,6 @@ async function loadBefore(limit = INITIAL_LIMIT) {
   }
 }
 
-
 async function loadAfter(limit = INITIAL_LIMIT) {
   // Don't load during replay or when preparing replay
   if (replayState !== 'IDLE') return;
@@ -731,19 +676,16 @@ async function loadAfter(limit = INITIAL_LIMIT) {
   }
 }
 
-
 async function loadRange(startIso, endIso) {
   const userStartTs = Math.floor(new Date(startIso).getTime() / 1000);
   const userEndTs = endIso
     ? Math.floor(new Date(endIso).getTime() / 1000)
     : loadedMax;
 
-
   if (!startIso) {
     alert("Please select a start datetime");
     return;
   }
-
 
   // Calculate expected number of candles for the range
   // For 1-minute data: ~375 minutes per trading day (09:15 to 15:30)
@@ -764,13 +706,10 @@ async function loadRange(startIso, endIso) {
   
   console.log(`Received ${j.candles ? j.candles.length : 0} candles from backend`);
 
-
   raw1mData = j.candles || [];
   raw1mData.sort((a, b) => a.time - b.time);
 
-
   allCandles = resampleCandles(raw1mData, currentTF);
-
 
   if (!allCandles.length) {
     candleSeries.setData([]);
@@ -779,26 +718,21 @@ async function loadRange(startIso, endIso) {
     return;
   }
 
-
   loadedMin = j.min_time;
   loadedMax = j.max_time;
-
 
   candleSeries.setData(allCandles);
   updateAllIndicatorSeries();
   mainChart.timeScale().fitContent();
-
 
   // Set range selection
   rangeSelected = true;
   rangeStartTs = userStartTs;
   rangeEndTs = userEndTs;
 
-
   // Enable replay controls
   if (replayBtn) replayBtn.disabled = false;
   if (btnPlay) btnPlay.disabled = false;
-
 
   // Set replay start input with market hours constraints
   if (replayStartInputEl) {
@@ -811,7 +745,6 @@ async function loadRange(startIso, endIso) {
     const finalDate = clampedTs < rangeStartTs ? startDate : 
                      (clampedTs > rangeEndTs ? endDate : clamped);
 
-
   replayStartInputEl.disabled = false;
     
     // Set min/max to range boundaries
@@ -820,7 +753,6 @@ async function loadRange(startIso, endIso) {
     replayStartInputEl.value = toLocalInput(finalDate);
   }
 }
-
 
 // ========== TIMEFRAME RESAMPLING ==========
 function resampleCandles(data, tfMinutes) {
@@ -831,22 +763,17 @@ function resampleCandles(data, tfMinutes) {
     data = data.slice().sort((a, b) => a.time - b.time);
   }
 
-
   if (tfMinutes === 1) return data.slice();
-
 
   const tfSec = tfMinutes * 60;
   const result = [];
   let bucket = null;
 
-
   for (const c of data) {
     const bucketTime = Math.floor(c.time / tfSec) * tfSec;
 
-
     if (!bucket || bucket.time !== bucketTime) {
       if (bucket) result.push(bucket);
-
 
       bucket = {
         time: bucketTime,
@@ -864,11 +791,9 @@ function resampleCandles(data, tfMinutes) {
     }
   }
 
-
   if (bucket) result.push(bucket);
   return result;
 }
-
 
 function applyTimeframe(tf) {
   if (!raw1mData.length) {
@@ -876,23 +801,18 @@ function applyTimeframe(tf) {
     return;
   }
 
-
   // Stop replay if it's running (timeframe change resets replay)
   if (replayState !== 'IDLE') {
     stopReplay();
   }
 
-
   const prevRange = mainChart.timeScale().getVisibleLogicalRange();
-
 
   currentTF = tf;
   allCandles = resampleCandles(raw1mData, tf);
 
-
   candleSeries.setData(allCandles);
   updateAllIndicatorSeries();
-
 
   // Update visible range to maintain user's view
   if (prevRange) {
@@ -913,13 +833,11 @@ function applyTimeframe(tf) {
     mainChart.timeScale().fitContent();
   }
 
-
   // Update button text
   const tfBtn = document.getElementById('tfBtn');
   if (tfBtn) {
     tfBtn.textContent = `${tf}m ▾`;
   }
-
 
   // Update active state in dropdown
   document.querySelectorAll('.tf-option').forEach(btn => {
@@ -932,13 +850,11 @@ function applyTimeframe(tf) {
   });
 }
 
-
 // ========== REPLAY FUNCTIONALITY (TradingView-style) ==========
 function updateIndicatorsIncremental(newCandle) {
   // Recalculate indicators for all candles (needed for accuracy)
   // But only update the last few values for performance
   const indicators = calculateIndicators(allCandles);
-
 
   // Update only the last value for each indicator (TradingView-style)
   const lastIdx = allCandles.length - 1;
@@ -961,7 +877,6 @@ function updateIndicatorsIncremental(newCandle) {
       }
     }
   }
-
 
   // Update overlay indicators (last few values for smooth transitions)
   if (opts.sma20 && sma20Series) {
@@ -992,12 +907,10 @@ function updateIndicatorsIncremental(newCandle) {
     }
   }
 
-
   // Update RSI (last few values)
   if (opts.rsi && rsiSeries) {
     updateLastFew(rsiSeries, indicators.rsi, true);
   }
-
 
   // Update MACD (last few values)
   if (opts.macd) {
@@ -1018,7 +931,6 @@ function updateIndicatorsIncremental(newCandle) {
     }
   }
 
-
   // Update trade signals (only check last candle)
   if (opts.signals && allCandles.length >= 2) {
     const lastIdx = allCandles.length - 1;
@@ -1032,7 +944,6 @@ function updateIndicatorsIncremental(newCandle) {
     const relRsiIdx = rsi.length - 1;
     const relPrevEmaIdx = relEmaIdx - 1;
     const relPrevSmaIdx = relSmaIdx - 1;
-
 
     const markers = [];
     
@@ -1071,20 +982,17 @@ function updateIndicatorsIncremental(newCandle) {
   }
 }
 
-
 function prepareReplayData() {
   if (!rangeSelected) {
     alert('Please select a range before replay');
     return false;
   }
 
-
   const replayStartInput = replayStartInputEl ? replayStartInputEl.value : null;
   if (!replayStartInput) {
     alert('Please select Replay Start time');
     return false;
   }
-
 
   const replayStartTs = Math.floor(new Date(replayStartInput).getTime() / 1000);
   
@@ -1102,7 +1010,6 @@ function prepareReplayData() {
   const historical = [];
   const future = [];
 
-
   for (const c of tfData) {
     if (c.time < replayStartTs) {
       historical.push(c);
@@ -1113,7 +1020,6 @@ function prepareReplayData() {
   }
   
 
-
   // Check if replay start time is within the selected range
   // If it's within range, proceed without popup
   if (replayStartTs < rangeStartTs || replayStartTs > rangeEndTs) {
@@ -1122,61 +1028,70 @@ function prepareReplayData() {
     return false;
   }
 
-
   // If no future candles, it means replay start is at or very close to range end
   // This is OK - we can still show historical candles
   // Allow replay even with no future candles (it will just end immediately)
   // No popup needed - this is a valid case
-
 
   // Store replay data
   replayData = [...historical, ...future];  // Full dataset for indicators
   replayCandles = [...future];  // Candles to replay
   replayIndex = 0;  // Start from first future candle
 
-
   // Set replay state to PREPARING to prevent lazy loading interference
   replayState = 'PREPARING';
 
-
-  // CRITICAL: Get current candles from allCandles (tracks what's displayed on chart)
-  // We want to preserve ALL candles that are currently displayed BEFORE replay start
-  // and remove ONLY candles AFTER replay start time
-  // Use allCandles which is the source of truth for what's on the chart
+  // CRITICAL: Preserve ALL candles BEFORE replay start time
+  // DO NOT clear the chart - only remove candles AFTER replay start
+  // The key is: we want to show candles that are currently on the chart BEFORE replay start
+  // and then add candles AFTER replay start one by one
+  
+  console.log('prepareReplayData: Current allCandles length:', allCandles ? allCandles.length : 0);
+  console.log('prepareReplayData: Historical candles from range:', historical.length);
+  console.log('prepareReplayData: Replay start timestamp:', replayStartTs, new Date(replayStartTs * 1000).toLocaleString());
+  
+  // Get current candles from chart (what's currently displayed)
+  // This includes all candles that were loaded, not just from the range
   const currentChartCandles = allCandles || [];
+  console.log('prepareReplayData: Current chart candles:', currentChartCandles.length);
   
-  // Filter current chart candles to keep only those BEFORE replay start time
-  // This preserves any candles that were loaded outside the selected range
+  // CRITICAL: Filter to keep ONLY candles BEFORE replay start time
+  // This preserves any candles that were already on the chart before replay start
   const preservedCandles = currentChartCandles.filter(c => c.time < replayStartTs);
+  console.log('prepareReplayData: Preserved candles (before replay start):', preservedCandles.length);
   
-  // Combine preserved candles with historical candles from the range
-  // Use a Set to avoid duplicates (by time)
+  // Combine preserved candles with historical candles from range
+  // Use Map to avoid duplicates by time
   const candlesMap = new Map();
   
-  // First, add preserved candles (from current chart display)
+  // Add preserved candles first (from current chart - may include older data outside range)
   for (const c of preservedCandles) {
     candlesMap.set(c.time, c);
   }
   
-  // Then, add historical candles from the range (may have more recent data)
+  // Add historical candles from range (ensures we have all candles from range before replay start)
   for (const c of historical) {
     if (c.time < replayStartTs) {
       candlesMap.set(c.time, c);
     }
   }
   
-  // Convert map to sorted array
+  // Set allCandles to combined historical candles (before replay start)
+  // These will remain visible, and new candles will be added one by one
   allCandles = Array.from(candlesMap.values()).sort((a, b) => a.time - b.time);
+  console.log('prepareReplayData: Final allCandles length (before replay start):', allCandles.length);
   
-  // Now remove candles AFTER replay start time from the chart
-  // We do this by setting the chart to only show candles before replay start
+  // CRITICAL: Update chart to show ONLY historical candles (before replay start)
+  // This removes candles after replay start, but keeps all candles before
+  // IMPORTANT: Only call setData if allCandles has candles, otherwise preserve current chart
   if (allCandles.length > 0) {
-    // Set chart to show only candles before replay start time
+    console.log('prepareReplayData: Setting chart with', allCandles.length, 'historical candles');
+    // Set chart to show historical candles (before replay start time)
     // This removes candles after replay start, but keeps all candles before
     candleSeries.setData(allCandles);
     updateAllIndicatorSeries();
     
-    // Fit content to show all preserved candles, then scroll to end
+    // Fit content to show all historical candles, then scroll to end
     requestAnimationFrame(() => {
       mainChart.timeScale().fitContent();
       setTimeout(() => {
@@ -1185,26 +1100,57 @@ function prepareReplayData() {
       }, 100);
     });
   } else {
-    // No candles before replay start - chart starts empty
-    candleSeries.setData([]);
-    updateAllIndicatorSeries();
+    // No candles before replay start in combined data
+    // Check if current chart has candles before replay start that we should preserve
+    console.warn('prepareReplayData: No candles before replay start in combined data');
+    console.log('prepareReplayData: Current chart has', currentChartCandles.length, 'candles');
     
-    requestAnimationFrame(() => {
-      mainChart.timeScale().fitContent();
-    });
+    // Check if current chart has any candles before replay start
+    const candlesBeforeInChart = currentChartCandles.filter(c => c.time < replayStartTs);
+    
+    if (candlesBeforeInChart.length > 0) {
+      // There ARE candles before replay start in current chart - use them
+      allCandles = candlesBeforeInChart;
+      console.log('prepareReplayData: Found', allCandles.length, 'candles before replay start in current chart - preserving them');
+      candleSeries.setData(allCandles);
+      updateAllIndicatorSeries();
+      
+      requestAnimationFrame(() => {
+        mainChart.timeScale().fitContent();
+        setTimeout(() => {
+          mainChart.timeScale().scrollToRealTime();
+        }, 100);
+      });
+    } else {
+      // No candles before replay start at all - this is expected when replay start = range start
+      // In this case, we need to remove all candles from chart (they're all at/after replay start)
+      // so they can be added back one by one during replay
+      console.log('prepareReplayData: No candles before replay start');
+      console.log('prepareReplayData: Current chart has', currentChartCandles.length, 'candles, all at/after replay start');
+      console.log('prepareReplayData: Will clear chart so candles can be added one by one from replay start');
+      
+      // Set allCandles to empty - candles after replay start will be added one by one
+      allCandles = [];
+      
+      // Clear the chart - this is necessary to remove candles after replay start
+      // The replay loop will add them back one by one
+      candleSeries.setData([]);
+      updateAllIndicatorSeries();
+      
+      requestAnimationFrame(() => {
+        mainChart.timeScale().fitContent();
+      });
+    }
   }
   
   // Clear any existing markers
   candleSeries.setMarkers([]);
 
-
   // Update time indicator
   updateReplayTimeIndicator();
 
-
   return true;
 }
-
 
 function updateReplayTimeIndicator() {
   if (!replayTimeIndicator) return;
@@ -1233,8 +1179,19 @@ function updateReplayTimeIndicator() {
     return;
   }
 
-
-  const currentCandle = allCandles.length > 0 ? allCandles[allCandles.length - 1] : null;
+  // Get the current candle being displayed
+  // During replay, the last candle in allCandles is the one we just added
+  // But we should use the candle from replayCandles to ensure we're showing the correct replayed candle
+  let currentCandle = null;
+  
+  if (replayState === 'PLAYING' && replayCandles.length > 0 && replayIndex < replayCandles.length) {
+    // We've just added replayCandles[replayIndex], so that's the current candle
+    currentCandle = replayCandles[replayIndex];
+  } else if (allCandles.length > 0) {
+    // Fallback to last candle in allCandles
+    currentCandle = allCandles[allCandles.length - 1];
+  }
+  
   if (!currentCandle) {
     replayTimeIndicator.textContent = '';
     return;
@@ -1252,13 +1209,16 @@ function updateReplayTimeIndicator() {
   });
   
   // Calculate progress: how many candles we've replayed out of total to replay
+  // When updateReplayTimeIndicator() is called:
+  // - replayIndex is the index of the candle we just added (before increment)
+  // - We've added (replayIndex + 1) candles (indices 0 through replayIndex)
+  // - So progress = (replayIndex + 1) / replayCandles.length * 100
   const progress = replayCandles.length > 0 
-    ? Math.round((replayIndex / replayCandles.length) * 100) 
+    ? Math.round(((replayIndex + 1) / replayCandles.length) * 100) 
     : 0;
   
   replayTimeIndicator.textContent = `${timeStr} (${progress}%)`;
 }
-
 
 function startReplay(speed) {
   console.log('startReplay() called. Current state:', replayState, 'replayTimer:', replayTimer);
@@ -1327,7 +1287,6 @@ function startReplay(speed) {
         return;
       }
 
-
       const newCandle = replayCandles[replayIndex];
       
       // Add candle using update() - this preserves all existing candles (historical + new)
@@ -1373,19 +1332,18 @@ function startReplay(speed) {
   replaySpeed = speed || 800;
   replayState = 'PLAYING';
   
-  // CRITICAL: Ensure chart is showing historical candles AND indicators before replay starts
-  // The prepareReplayData() should have set historical candles, but verify
-  // Make sure allCandles contains historical candles and chart displays them
+  // CRITICAL: The prepareReplayData() should have already set historical candles
+  // DO NOT call setData again here as it might cause flickering or clearing
+  // The chart should already be showing historical candles from prepareReplayData()
+  console.log('startReplay: allCandles length after prepareReplayData:', allCandles.length);
+  
+  // Only verify indicators are updated (prepareReplayData() should have done this)
   if (allCandles.length > 0) {
-    // Ensure chart has historical candles displayed
-    // allCandles is the source of truth - always sync chart with it
-    // This should already be done in prepareReplayData(), but double-check
-    candleSeries.setData(allCandles);
+    // Indicators should already be updated by prepareReplayData(), but ensure they're correct
+    // Only update if really needed to avoid unnecessary work and potential clearing
     updateAllIndicatorSeries();
-    
-    // Indicators should be updated by updateAllIndicatorSeries() call above
-    // Since we can't check series.data() directly, we rely on updateAllIndicatorSeries()
-    // to ensure indicators are correctly set based on allCandles
+  } else {
+    console.warn('startReplay: allCandles is empty after prepareReplayData()');
   }
   
   // Update UI
@@ -1398,7 +1356,6 @@ function startReplay(speed) {
   replayBtn.classList.add('active');
   }
 
-
   // Start replay timer - this will add new candles while preserving historical ones
   // Indicators should already be updated by updateAllIndicatorSeries() call above
   // Since we can't check series.data() directly, we rely on updateAllIndicatorSeries()
@@ -1409,7 +1366,6 @@ function startReplay(speed) {
       stopReplay();
       return;
     }
-
 
     const newCandle = replayCandles[replayIndex];
     if (!newCandle) {
@@ -1437,7 +1393,6 @@ function startReplay(speed) {
   }, replaySpeed);
 }
 
-
 function pauseReplay() {
   if (replayState !== 'PLAYING') return;
   
@@ -1455,13 +1410,11 @@ function pauseReplay() {
   }
 }
 
-
 function stopReplay() {
   clearInterval(replayTimer);
   replayTimer = null;
   replayState = 'IDLE';
   cachedIndicators = null;
-
 
   // Reset to show all candles normally (fresh screen)
   // Restore full chart with all data at current timeframe
@@ -1469,7 +1422,6 @@ function stopReplay() {
   replayIndex = 0;
   replayCandles = [];
   replayData = [];
-
 
   // Update chart with full data (fresh screen - shows all candles normally)
   candleSeries.setData(allCandles);
@@ -1493,31 +1445,25 @@ function stopReplay() {
   candleSeries.setMarkers([]);
 }
 
-
 // ========== UTILITY FUNCTIONS ==========
 function toLocalInput(date) {
   const pad = n => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-
 function isWithinMarketHours(date) {
   const h = date.getHours();
   const m = date.getMinutes();
 
-
   const afterOpen = h > MARKET_OPEN_HOUR || (h === MARKET_OPEN_HOUR && m >= MARKET_OPEN_MIN);
   const beforeClose = h < MARKET_CLOSE_HOUR || (h === MARKET_CLOSE_HOUR && m <= MARKET_CLOSE_MIN);
-
 
   return afterOpen && beforeClose;
 }
 
-
 function clampToMarketHours(date) {
   const d = new Date(date);
   const originalDate = new Date(d);
-
 
   // Check if time is before market open (09:15 AM)
   if (d.getHours() < MARKET_OPEN_HOUR || 
@@ -1526,7 +1472,6 @@ function clampToMarketHours(date) {
       d.setHours(MARKET_OPEN_HOUR, MARKET_OPEN_MIN, 0, 0);
     return d;
   }
-
 
   // Check if time is after market close (03:30 PM)
   if (d.getHours() > MARKET_CLOSE_HOUR || 
@@ -1543,11 +1488,9 @@ function clampToMarketHours(date) {
   return d;
 }
 
-
   // Time is within market hours
   return d;
 }
-
 
 function getCurrentVisibleRange() {
   try {
@@ -1557,7 +1500,6 @@ function getCurrentVisibleRange() {
   }
 }
 
-
 function restoreVisibleRange(range) {
   if (!range) return;
   try {
@@ -1566,7 +1508,6 @@ function restoreVisibleRange(range) {
     // ignore
   }
 }
-
 
 function setIndicatorBadges() {
   const set = (id, color) => {
@@ -1581,7 +1522,6 @@ function setIndicatorBadges() {
   set('badge-rsi', COLORS.rsi);
   set('badge-macd', COLORS.macd);
 }
-
 
 function setReplayStatus(state) {
   if (state === 'playing') {
@@ -1608,20 +1548,17 @@ function setReplayStatus(state) {
   }
 }
 
-
 // ========== CHART RESIZING ==========
 function scheduleResizeCharts() {
   if (resizeTimer) clearTimeout(resizeTimer);
   resizeTimer = setTimeout(resizeCharts, 120);
 }
 
-
 function resizeCharts() {
   try {
     const mainContainer = document.getElementById('chart-main');
     const rsiContainer = document.getElementById('chart-rsi');
     const macdContainer = document.getElementById('chart-macd');
-
 
     if (mainContainer && mainChart) {
     const wMain = mainContainer.clientWidth || mainContainer.offsetWidth;
@@ -1630,7 +1567,6 @@ function resizeCharts() {
       mainChart.resize(wMain, hMain);
       }
     }
-
 
     if (rsiContainer && rsiChart) {
     if (getComputedStyle(rsiContainer).display !== 'none') {
@@ -1648,7 +1584,6 @@ function resizeCharts() {
   }
 }
 
-
 // ========== UI INITIALIZATION ==========
 async function initUI() {
   // Header elements
@@ -1665,7 +1600,6 @@ async function initUI() {
   const rangeStartInput = document.getElementById('start');
   const rangeEndInput = document.getElementById('end');
 
-
   // Range/Replay panel toggles
   if (rangeBtn) {
   rangeBtn.onclick = () => {
@@ -1674,7 +1608,6 @@ async function initUI() {
   };
   }
 
-
   if (replayBtn) {
   replayBtn.onclick = () => {
       if (replayPanel) replayPanel.classList.toggle('hidden');
@@ -1682,12 +1615,10 @@ async function initUI() {
   };
   }
 
-
   // Load data info
   const info = await fetch('/data-info').then(r => r.json());
   window.DATA_MIN_TS = info.min_ts;
   window.DATA_MAX_TS = info.max_ts;
-
 
   // Set date input ranges based on available data
   // Date selection is limited to data range, time is limited to market hours
@@ -1728,7 +1659,6 @@ async function initUI() {
     rangeEndInput.value = toLocalInput(clampedEnd);
   }
 
-
   // Load range button
   const btnLoad = document.getElementById('btnLoad');
   if (btnLoad && rangeStartInput && rangeEndInput) {
@@ -1742,7 +1672,6 @@ async function initUI() {
     };
   }
 
-
   // Indicator toggles
   const toggleSMA20 = document.getElementById('toggle-sma20');
   if (toggleSMA20) {
@@ -1752,7 +1681,6 @@ async function initUI() {
     });
   }
 
-
   const toggleSMA50 = document.getElementById('toggle-sma50');
   if (toggleSMA50) {
     toggleSMA50.addEventListener('change', e => {
@@ -1760,7 +1688,6 @@ async function initUI() {
   updateAllIndicatorSeries();
     });
   }
-
 
   const toggleEMA12 = document.getElementById('toggle-ema12');
   if (toggleEMA12) {
@@ -1770,7 +1697,6 @@ async function initUI() {
     });
   }
 
-
   const toggleBB = document.getElementById('toggle-bb');
   if (toggleBB) {
     toggleBB.addEventListener('change', e => {
@@ -1778,7 +1704,6 @@ async function initUI() {
       updateAllIndicatorSeries();
     });
   }
-
 
   const paceproToggle = document.getElementById('paceproToggle');
   if (paceproToggle) {
@@ -1788,7 +1713,6 @@ async function initUI() {
     });
   }
 
-
   const toggleSignals = document.getElementById('toggle-signals');
   if (toggleSignals) {
     toggleSignals.addEventListener('change', e => {
@@ -1797,14 +1721,12 @@ async function initUI() {
     });
   }
 
-
   // RSI toggle
   const toggleRSI = document.getElementById('toggle-rsi');
   if (toggleRSI && rsiContainer) {
     toggleRSI.addEventListener('change', e => {
       const range = getCurrentVisibleRange();
       opts.rsi = e.target.checked;
-
 
       if (opts.rsi) {
         rsiContainer.classList.remove('hidden');
@@ -1813,9 +1735,7 @@ async function initUI() {
         rsiContainer.classList.add('hidden');
       }
 
-
       scheduleResizeCharts();
-
 
       requestAnimationFrame(() => {
   if (opts.rsi) {
@@ -1826,14 +1746,12 @@ async function initUI() {
     });
   }
 
-
   // MACD toggle
   const toggleMACD = document.getElementById('toggle-macd');
   if (toggleMACD && macdContainer) {
     toggleMACD.addEventListener('change', e => {
       const range = getCurrentVisibleRange();
       opts.macd = e.target.checked;
-
 
   if (opts.macd) {
         macdContainer.classList.remove('hidden');
@@ -1842,9 +1760,7 @@ async function initUI() {
         macdContainer.classList.add('hidden');
       }
 
-
       scheduleResizeCharts();
-
 
       requestAnimationFrame(() => {
         if (opts.macd) {
@@ -1854,7 +1770,6 @@ async function initUI() {
       });
     });
   }
-
 
   // Indicators dropdown button click handler
   const indicatorsBtn = document.querySelector('.header-right .dropdown .header-btn');
@@ -1878,7 +1793,6 @@ async function initUI() {
     }
   }
 
-
   // Timeframe dropdown button click handler
   const tfBtn = document.getElementById('tfBtn');
   if (tfBtn) {
@@ -1896,7 +1810,6 @@ async function initUI() {
     }
   }
 
-
   // Timeframe option buttons
     document.querySelectorAll('.tf-option').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -1912,13 +1825,11 @@ async function initUI() {
       });
     });
 
-
   // Set initial active timeframe (1m)
   const initialTfBtn = document.querySelector('.tf-option[data-tf="1"]');
   if (initialTfBtn) {
     initialTfBtn.classList.add('active');
   }
-
 
   // Close dropdowns when clicking outside
   document.addEventListener('click', (e) => {
@@ -1932,7 +1843,6 @@ async function initUI() {
       });
     }
   });
-
 
   // Replay controls with market hours validation
   if (replayStartInputEl) {
@@ -1957,7 +1867,6 @@ async function initUI() {
       }
     };
 
-
     replayStartInputEl.addEventListener('input', () => {
       setReplayTimeConstraints();
       
@@ -1965,7 +1874,6 @@ async function initUI() {
         if (btnPlay) btnPlay.disabled = true;
         return;
       }
-
 
       const ts = Math.floor(new Date(replayStartInputEl.value).getTime() / 1000);
       if (btnPlay) {
@@ -1997,7 +1905,6 @@ async function initUI() {
     });
   }
 
-
   // Market hours validation for range inputs
   // Date selection is constrained by data range, time is constrained to market hours
   if (rangeStartInput) {
@@ -2005,7 +1912,6 @@ async function initUI() {
     const dataMaxDate = new Date(window.DATA_MAX_TS * 1000);
     const dataMinDateStr = dataMinDate.toISOString().split('T')[0];
     const dataMaxDateStr = dataMaxDate.toISOString().split('T')[0];
-
 
     // Update constraints: date from data range, time from market hours
     const updateConstraints = (input) => {
@@ -2031,11 +1937,9 @@ async function initUI() {
       }
     };
 
-
     rangeStartInput.addEventListener('input', () => {
       updateConstraints(rangeStartInput);
     });
-
 
     rangeStartInput.addEventListener('change', () => {
       if (rangeStartInput.value) {
@@ -2080,13 +1984,11 @@ async function initUI() {
     });
   }
 
-
   if (rangeEndInput) {
     const dataMinDate = new Date(window.DATA_MIN_TS * 1000);
     const dataMaxDate = new Date(window.DATA_MAX_TS * 1000);
     const dataMinDateStr = dataMinDate.toISOString().split('T')[0];
     const dataMaxDateStr = dataMaxDate.toISOString().split('T')[0];
-
 
     const updateConstraints = (input) => {
       if (input.value) {
@@ -2096,11 +1998,9 @@ async function initUI() {
       }
     };
 
-
     rangeEndInput.addEventListener('input', () => {
       updateConstraints(rangeEndInput);
     });
-
 
     rangeEndInput.addEventListener('change', () => {
       if (rangeEndInput.value) {
@@ -2145,7 +2045,6 @@ async function initUI() {
     });
   }
 
-
   // Replay play button
   if (btnPlay) {
     btnPlay.onclick = () => {
@@ -2162,7 +2061,6 @@ async function initUI() {
     };
   }
 
-
   // Replay pause button
   if (btnPause) {
     btnPause.onclick = () => {
@@ -2170,7 +2068,6 @@ async function initUI() {
       setReplayStatus('paused');
     };
   }
-
 
   // Replay stop button
   const btnStop = document.getElementById('btnStop');
@@ -2181,7 +2078,6 @@ async function initUI() {
     };
   }
 
-
   // Fullscreen button
   const fsBtn = document.getElementById('fullscreenBtn');
   if (fsBtn) {
@@ -2191,11 +2087,9 @@ async function initUI() {
     });
   }
 
-
   // Window resize
   window.addEventListener('resize', () => scheduleResizeCharts());
 }
-
 
 // ========== PREVENT BROWSER NAVIGATION GESTURES ==========
 function preventBrowserNavigationGestures() {
@@ -2208,7 +2102,6 @@ function preventBrowserNavigationGestures() {
   // No JavaScript needed - CSS handles it all!
   // This allows the chart library to receive all wheel events and handle scrolling naturally
 }
-
 
 // ========== INITIALIZATION ==========
 (async function init() {
