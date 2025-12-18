@@ -43,6 +43,7 @@ let btnPause = null;
 let replaySpeed = 800;
 let replayTimeIndicator = null;
 let cachedIndicators = null;  // Cache for incremental updates
+let fullDataFromBackend = [];
 
 // UI elements
 let rangeBtn, replayBtn;
@@ -709,7 +710,9 @@ async function loadRange(startIso, endIso) {
   raw1mData = j.candles || [];
   raw1mData.sort((a, b) => a.time - b.time);
 
-  allCandles = resampleCandles(raw1mData, currentTF);
+  fullDataFromBackend = resampleCandles(raw1mData, currentTF); // 🔥 SOURCE OF TRUTH
+
+  allCandles = [...fullDataFromBackend];
 
   if (!allCandles.length) {
     candleSeries.setData([]);
@@ -982,175 +985,175 @@ function updateIndicatorsIncremental(newCandle) {
   }
 }
 
-function prepareReplayData() {
-  if (!rangeSelected) {
-    alert('Please select a range before replay');
-    return false;
-  }
+// function prepareReplayData() {
+//   if (!rangeSelected) {
+//     alert('Please select a range before replay');
+//     return false;
+//   }
 
-  const replayStartInput = replayStartInputEl ? replayStartInputEl.value : null;
-  if (!replayStartInput) {
-    alert('Please select Replay Start time');
-    return false;
-  }
+//   const replayStartInput = replayStartInputEl ? replayStartInputEl.value : null;
+//   if (!replayStartInput) {
+//     alert('Please select Replay Start time');
+//     return false;
+//   }
 
-  const replayStartTs = Math.floor(new Date(replayStartInput).getTime() / 1000);
+//   const replayStartTs = Math.floor(new Date(replayStartInput).getTime() / 1000);
   
-  // Always use raw1mData and resample to current timeframe
-  // raw1mData should contain all candles from the selected range
-  // This ensures we have the complete dataset to work with
-  if (!raw1mData || raw1mData.length === 0) {
-    alert('No data available. Please load a range first.');
-    return false;
-  }
+//   // Always use raw1mData and resample to current timeframe
+//   // raw1mData should contain all candles from the selected range
+//   // This ensures we have the complete dataset to work with
+//   if (!raw1mData || raw1mData.length === 0) {
+//     alert('No data available. Please load a range first.');
+//     return false;
+//   }
   
-  const tfData = resampleCandles(raw1mData, currentTF);
+//   const tfData = resampleCandles(raw1mData, currentTF);
   
-  // Split into historical (before replay start) and future (to replay)
-  const historical = [];
-  const future = [];
+//   // Split into historical (before replay start) and future (to replay)
+//   const historical = [];
+//   const future = [];
 
-  for (const c of tfData) {
-    if (c.time < replayStartTs) {
-      historical.push(c);
-    } else if (c.time >= replayStartTs && c.time <= rangeEndTs) {
-      // Only include candles within the selected range
-      future.push(c);
-    }
-  }
+//   for (const c of tfData) {
+//     if (c.time < replayStartTs) {
+//       historical.push(c);
+//     } else if (c.time >= replayStartTs && c.time <= rangeEndTs) {
+//       // Only include candles within the selected range
+//       future.push(c);
+//     }
+//   }
   
 
-  // Check if replay start time is within the selected range
-  // If it's within range, proceed without popup
-  if (replayStartTs < rangeStartTs || replayStartTs > rangeEndTs) {
-    // Replay start is outside range - this is invalid
-    alert('Replay start time must be within the selected range');
-    return false;
-  }
+//   // Check if replay start time is within the selected range
+//   // If it's within range, proceed without popup
+//   if (replayStartTs < rangeStartTs || replayStartTs > rangeEndTs) {
+//     // Replay start is outside range - this is invalid
+//     alert('Replay start time must be within the selected range');
+//     return false;
+//   }
 
-  // If no future candles, it means replay start is at or very close to range end
-  // This is OK - we can still show historical candles
-  // Allow replay even with no future candles (it will just end immediately)
-  // No popup needed - this is a valid case
+//   // If no future candles, it means replay start is at or very close to range end
+//   // This is OK - we can still show historical candles
+//   // Allow replay even with no future candles (it will just end immediately)
+//   // No popup needed - this is a valid case
 
-  // Store replay data
-  replayData = [...historical, ...future];  // Full dataset for indicators
-  replayCandles = [...future];  // Candles to replay
-  replayIndex = 0;  // Start from first future candle
+//   // Store replay data
+//   replayData = [...historical, ...future];  // Full dataset for indicators
+//   replayCandles = [...future];  // Candles to replay
+//   replayIndex = 0;  // Start from first future candle
 
-  // Set replay state to PREPARING to prevent lazy loading interference
-  replayState = 'PREPARING';
+//   // Set replay state to PREPARING to prevent lazy loading interference
+//   replayState = 'PREPARING';
 
-  // CRITICAL: Preserve ALL candles BEFORE replay start time
-  // DO NOT clear the chart - only remove candles AFTER replay start
-  // The key is: we want to show candles that are currently on the chart BEFORE replay start
-  // and then add candles AFTER replay start one by one
+//   // CRITICAL: Preserve ALL candles BEFORE replay start time
+//   // DO NOT clear the chart - only remove candles AFTER replay start
+//   // The key is: we want to show candles that are currently on the chart BEFORE replay start
+//   // and then add candles AFTER replay start one by one
   
-  console.log('prepareReplayData: Current allCandles length:', allCandles ? allCandles.length : 0);
-  console.log('prepareReplayData: Historical candles from range:', historical.length);
-  console.log('prepareReplayData: Replay start timestamp:', replayStartTs, new Date(replayStartTs * 1000).toLocaleString());
+//   console.log('prepareReplayData: Current allCandles length:', allCandles ? allCandles.length : 0);
+//   console.log('prepareReplayData: Historical candles from range:', historical.length);
+//   console.log('prepareReplayData: Replay start timestamp:', replayStartTs, new Date(replayStartTs * 1000).toLocaleString());
   
-  // Get current candles from chart (what's currently displayed)
-  // This includes all candles that were loaded, not just from the range
-  const currentChartCandles = allCandles || [];
-  console.log('prepareReplayData: Current chart candles:', currentChartCandles.length);
+//   // Get current candles from chart (what's currently displayed)
+//   // This includes all candles that were loaded, not just from the range
+//   const currentChartCandles = allCandles || [];
+//   console.log('prepareReplayData: Current chart candles:', currentChartCandles.length);
   
-  // CRITICAL: Filter to keep ONLY candles BEFORE replay start time
-  // This preserves any candles that were already on the chart before replay start
-  const preservedCandles = currentChartCandles.filter(c => c.time < replayStartTs);
-  console.log('prepareReplayData: Preserved candles (before replay start):', preservedCandles.length);
+//   // CRITICAL: Filter to keep ONLY candles BEFORE replay start time
+//   // This preserves any candles that were already on the chart before replay start
+//   const preservedCandles = currentChartCandles.filter(c => c.time < replayStartTs);
+//   console.log('prepareReplayData: Preserved candles (before replay start):', preservedCandles.length);
   
-  // Combine preserved candles with historical candles from range
-  // Use Map to avoid duplicates by time
-  const candlesMap = new Map();
+//   // Combine preserved candles with historical candles from range
+//   // Use Map to avoid duplicates by time
+//   const candlesMap = new Map();
   
-  // Add preserved candles first (from current chart - may include older data outside range)
-  for (const c of preservedCandles) {
-    candlesMap.set(c.time, c);
-  }
+//   // Add preserved candles first (from current chart - may include older data outside range)
+//   for (const c of preservedCandles) {
+//     candlesMap.set(c.time, c);
+//   }
   
-  // Add historical candles from range (ensures we have all candles from range before replay start)
-  for (const c of historical) {
-    if (c.time < replayStartTs) {
-      candlesMap.set(c.time, c);
-    }
-  }
+//   // Add historical candles from range (ensures we have all candles from range before replay start)
+//   for (const c of historical) {
+//     if (c.time < replayStartTs) {
+//       candlesMap.set(c.time, c);
+//     }
+//   }
   
-  // Set allCandles to combined historical candles (before replay start)
-  // These will remain visible, and new candles will be added one by one
-  allCandles = Array.from(candlesMap.values()).sort((a, b) => a.time - b.time);
-  console.log('prepareReplayData: Final allCandles length (before replay start):', allCandles.length);
+//   // Set allCandles to combined historical candles (before replay start)
+//   // These will remain visible, and new candles will be added one by one
+//   allCandles = Array.from(candlesMap.values()).sort((a, b) => a.time - b.time);
+//   console.log('prepareReplayData: Final allCandles length (before replay start):', allCandles.length);
   
-  // CRITICAL: Update chart to show ONLY historical candles (before replay start)
-  // This removes candles after replay start, but keeps all candles before
-  // IMPORTANT: Only call setData if allCandles has candles, otherwise preserve current chart
-  if (allCandles.length > 0) {
-    console.log('prepareReplayData: Setting chart with', allCandles.length, 'historical candles');
-    // Set chart to show historical candles (before replay start time)
-    // This removes candles after replay start, but keeps all candles before
-    candleSeries.setData(allCandles);
-    updateAllIndicatorSeries();
+//   // CRITICAL: Update chart to show ONLY historical candles (before replay start)
+//   // This removes candles after replay start, but keeps all candles before
+//   // IMPORTANT: Only call setData if allCandles has candles, otherwise preserve current chart
+//   if (allCandles.length > 0) {
+//     console.log('prepareReplayData: Setting chart with', allCandles.length, 'historical candles');
+//     // Set chart to show historical candles (before replay start time)
+//     // This removes candles after replay start, but keeps all candles before
+//     candleSeries.setData(allCandles);
+//     updateAllIndicatorSeries();
     
-    // Fit content to show all historical candles, then scroll to end
-    requestAnimationFrame(() => {
-      mainChart.timeScale().fitContent();
-      setTimeout(() => {
-        // Scroll to show the last candle before replay start
-        mainChart.timeScale().scrollToRealTime();
-      }, 100);
-    });
-  } else {
-    // No candles before replay start in combined data
-    // Check if current chart has candles before replay start that we should preserve
-    console.warn('prepareReplayData: No candles before replay start in combined data');
-    console.log('prepareReplayData: Current chart has', currentChartCandles.length, 'candles');
+//     // Fit content to show all historical candles, then scroll to end
+//     requestAnimationFrame(() => {
+//       mainChart.timeScale().fitContent();
+//       setTimeout(() => {
+//         // Scroll to show the last candle before replay start
+//         mainChart.timeScale().scrollToRealTime();
+//       }, 100);
+//     });
+//   } else {
+//     // No candles before replay start in combined data
+//     // Check if current chart has candles before replay start that we should preserve
+//     console.warn('prepareReplayData: No candles before replay start in combined data');
+//     console.log('prepareReplayData: Current chart has', currentChartCandles.length, 'candles');
     
-    // Check if current chart has any candles before replay start
-    const candlesBeforeInChart = currentChartCandles.filter(c => c.time < replayStartTs);
+//     // Check if current chart has any candles before replay start
+//     const candlesBeforeInChart = currentChartCandles.filter(c => c.time < replayStartTs);
     
-    if (candlesBeforeInChart.length > 0) {
-      // There ARE candles before replay start in current chart - use them
-      allCandles = candlesBeforeInChart;
-      console.log('prepareReplayData: Found', allCandles.length, 'candles before replay start in current chart - preserving them');
-      candleSeries.setData(allCandles);
-      updateAllIndicatorSeries();
+//     if (candlesBeforeInChart.length > 0) {
+//       // There ARE candles before replay start in current chart - use them
+//       allCandles = candlesBeforeInChart;
+//       console.log('prepareReplayData: Found', allCandles.length, 'candles before replay start in current chart - preserving them');
+//       candleSeries.setData(allCandles);
+//       updateAllIndicatorSeries();
       
-      requestAnimationFrame(() => {
-        mainChart.timeScale().fitContent();
-        setTimeout(() => {
-          mainChart.timeScale().scrollToRealTime();
-        }, 100);
-      });
-    } else {
-      // No candles before replay start at all - this is expected when replay start = range start
-      // In this case, we need to remove all candles from chart (they're all at/after replay start)
-      // so they can be added back one by one during replay
-      console.log('prepareReplayData: No candles before replay start');
-      console.log('prepareReplayData: Current chart has', currentChartCandles.length, 'candles, all at/after replay start');
-      console.log('prepareReplayData: Will clear chart so candles can be added one by one from replay start');
+//       requestAnimationFrame(() => {
+//         mainChart.timeScale().fitContent();
+//         setTimeout(() => {
+//           mainChart.timeScale().scrollToRealTime();
+//         }, 100);
+//       });
+//     } else {
+//       // No candles before replay start at all - this is expected when replay start = range start
+//       // In this case, we need to remove all candles from chart (they're all at/after replay start)
+//       // so they can be added back one by one during replay
+//       console.log('prepareReplayData: No candles before replay start');
+//       console.log('prepareReplayData: Current chart has', currentChartCandles.length, 'candles, all at/after replay start');
+//       console.log('prepareReplayData: Will clear chart so candles can be added one by one from replay start');
       
-      // Set allCandles to empty - candles after replay start will be added one by one
-      allCandles = [];
+//       // Set allCandles to empty - candles after replay start will be added one by one
+//       allCandles = [];
       
-      // Clear the chart - this is necessary to remove candles after replay start
-      // The replay loop will add them back one by one
-      candleSeries.setData([]);
-      updateAllIndicatorSeries();
+//       // Clear the chart - this is necessary to remove candles after replay start
+//       // The replay loop will add them back one by one
+//       candleSeries.setData([]);
+//       updateAllIndicatorSeries();
       
-      requestAnimationFrame(() => {
-        mainChart.timeScale().fitContent();
-      });
-    }
-  }
+//       requestAnimationFrame(() => {
+//         mainChart.timeScale().fitContent();
+//       });
+//     }
+//   }
   
-  // Clear any existing markers
-  candleSeries.setMarkers([]);
+//   // Clear any existing markers
+//   candleSeries.setMarkers([]);
 
-  // Update time indicator
-  updateReplayTimeIndicator();
+//   // Update time indicator
+//   updateReplayTimeIndicator();
 
-  return true;
-}
+//   return true;
+// }
 
 function updateReplayTimeIndicator() {
   if (!replayTimeIndicator) return;
@@ -1220,230 +1223,340 @@ function updateReplayTimeIndicator() {
   replayTimeIndicator.textContent = `${timeStr} (${progress}%)`;
 }
 
-function startReplay(speed) {
-  console.log('startReplay() called. Current state:', replayState, 'replayTimer:', replayTimer);
-  // If already playing, do nothing
-  if (replayTimer || replayState === 'PLAYING') {
-    console.log('Replay already playing, returning early');
+// ========== REPLAY FUNCTIONALITY (FIXED) ==========
+
+function replayTick() {
+  if (replayIndex >= replayCandles.length) {
+    stopReplay();
     return;
   }
-  
-  // If in PREPARING state from a previous failed attempt, reset to IDLE
-  if (replayState === 'PREPARING') {
-    console.log('Resetting from PREPARING state');
-    replayState = 'IDLE';
+
+  const candle = replayCandles[replayIndex];
+
+  // 🔥 NEVER setData here
+  candleSeries.update(candle);
+  allCandles.push(candle);
+
+  updateIndicatorsIncremental(candle);
+
+  mainChart.timeScale().scrollToRealTime();
+  updateReplayTimeIndicator(candle.time);
+
+  replayIndex++;
+}
+async function prepareReplayData() {
+  const replayStartInput = replayStartInputEl ? replayStartInputEl.value : null;
+  if (!replayStartInput) {
+    alert('Please select Replay Start time');
+    return false;
   }
+
+  const replayStartTs = Math.floor(new Date(replayStartInput).getTime() / 1000);
   
-  // If paused, resume from where we left off
+  if (!rangeSelected || !replayStartTs) return false;
+
+  const startTs = replayStartTs;
+
+
+  const res = await fetch(`/data-before?time=${loadedMin}&limit=${limit}`);
+  const j = await res.json();
+
+  raw1mData = j.candles || [];
+  raw1mData.sort((a, b) => a.time - b.time);
+
+  allCandles = resampleCandles(raw1mData, currentTF);
+
+  const history = fullDataFromBackend.filter(c => c.time < startTs);
+  replayCandles = fullDataFromBackend.filter(c => c.time >= startTs);
+
+  allCandles = [...history];
+
+  candleSeries.setData(allCandles);
+  updateAllIndicatorSeries();
+
+  replayIndex = 0;
+  return true;
+}
+
+
+function startReplay(speed) {
+  if (replayState === 'PLAYING') return;
+
+  replaySpeed = speed || replaySpeed;
+
+  // ▶️ FIRST TIME PLAY
+  if (replayState === 'IDLE') {
+    const ok = prepareReplayData();
+    if (!ok) return;
+
+    replayIndex = 0;
+    replayState = 'PLAYING';
+  }
+
+  // ▶️ RESUME FROM PAUSE
   if (replayState === 'PAUSED') {
     replayState = 'PLAYING';
-    replaySpeed = speed || replaySpeed;
-    
-    // Update UI
-    if (btnPlay) btnPlay.disabled = true;
-    if (btnPause) btnPause.disabled = false;
-    const btnStop = document.getElementById('btnStop');
-    if (btnStop) btnStop.disabled = false;
-    if (replayBtn) {
-      replayBtn.textContent = 'Replay: PLAYING';
-    }
-    
-    // Resume the timer - ensure historical candles AND indicators are still visible
-    // Verify chart has all candles (historical + already replayed)
-    // allCandles is the source of truth - if it has data, ensure chart displays it
-    if (!allCandles || allCandles.length === 0) {
-      console.warn('allCandles is empty when resuming replay');
-      // Try to restore from replayData if available
-      if (replayData && replayData.length > 0) {
-        allCandles = [...replayData];
-        candleSeries.setData(allCandles);
-        updateAllIndicatorSeries();
-      }
-    } else {
-      // Ensure chart displays current allCandles
-      candleSeries.setData(allCandles);
-      updateAllIndicatorSeries();
-    }
-    
-    // Check indicators separately - verify they are correct
-    // Check if RSI series has data (as a proxy for all indicators)
-    if (opts.rsi && rsiSeries) {
-      // We can't directly check rsiSeries.data(), so just ensure indicators are updated
-      // The updateAllIndicatorSeries() call above should have handled this
-    } else if (opts.macd && macdSeries) {
-      // Check MACD if RSI is not enabled
-      // We can't directly check macdSeries.data(), so just ensure indicators are updated
-      // The updateAllIndicatorSeries() call above should have handled this
-    }
-    
-    // Indicators should already be updated by updateAllIndicatorSeries() call above
-    // Since we can't check series.data() directly, we rely on updateAllIndicatorSeries()
-    // to ensure indicators are correctly set based on allCandles
-    
-    // Resume the timer
-    replayTimer = setInterval(() => {
-      if (replayIndex >= replayCandles.length) {
-    stopReplay();
-        return;
-      }
-
-      const newCandle = replayCandles[replayIndex];
-      
-      // Add candle using update() - this preserves all existing candles (historical + new)
-      // allCandles should already have historical candles + previously replayed candles
-      // The update() method adds the new candle while keeping all previous candles visible
-      candleSeries.update(newCandle);
-      allCandles.push(newCandle);
-      
-      // Update indicators incrementally
-      updateIndicatorsIncremental(newCandle);
-      
-      // Smooth scroll to keep latest candle visible
-      mainChart.timeScale().scrollToRealTime();
-      
-      // Update time indicator
-      updateReplayTimeIndicator();
-      
-      replayIndex++;
-    }, replaySpeed);
-    
-    return;
-  }
-  
-  // Start fresh - prepare data first
-  console.log('Preparing replay data...');
-  const prepared = prepareReplayData();
-  if (!prepared) {
-    console.error('prepareReplayData() returned false');
-    alert('Failed to prepare replay data. Please check that range and replay start time are set correctly.');
-    return;
-  }
-  
-  console.log('Replay data prepared. Historical candles:', allCandles.length, 'Future candles to replay:', replayCandles ? replayCandles.length : 0);
-  
-  // Verify that we have candles to replay
-  if (!replayCandles || replayCandles.length === 0) {
-    console.warn('No candles to replay - replay will end immediately');
-    // Still allow replay to start, but it will end immediately
-  }
-  
-  // Now that data is prepared, set state to PLAYING
-  // This happens after prepareReplayData() which sets state to PREPARING
-  replaySpeed = speed || 800;
-  replayState = 'PLAYING';
-  
-  // CRITICAL: The prepareReplayData() should have already set historical candles
-  // DO NOT call setData again here as it might cause flickering or clearing
-  // The chart should already be showing historical candles from prepareReplayData()
-  console.log('startReplay: allCandles length after prepareReplayData:', allCandles.length);
-  
-  // Only verify indicators are updated (prepareReplayData() should have done this)
-  if (allCandles.length > 0) {
-    // Indicators should already be updated by prepareReplayData(), but ensure they're correct
-    // Only update if really needed to avoid unnecessary work and potential clearing
-    updateAllIndicatorSeries();
-  } else {
-    console.warn('startReplay: allCandles is empty after prepareReplayData()');
-  }
-  
-  // Update UI
-  if (btnPlay) btnPlay.disabled = true;
-  if (btnPause) btnPause.disabled = false;
-  const btnStop = document.getElementById('btnStop');
-  if (btnStop) btnStop.disabled = false;
-  if (replayBtn) {
-    replayBtn.textContent = 'Replay: PLAYING';
-  replayBtn.classList.add('active');
   }
 
-  // Start replay timer - this will add new candles while preserving historical ones
-  // Indicators should already be updated by updateAllIndicatorSeries() call above
-  // Since we can't check series.data() directly, we rely on updateAllIndicatorSeries()
-  // to ensure indicators are correctly set based on allCandles
-  
-  replayTimer = setInterval(() => {
-    if (!replayCandles || replayIndex >= replayCandles.length) {
-      stopReplay();
-      return;
-    }
+  replayTimer = setInterval(replayTick, replaySpeed);
 
-    const newCandle = replayCandles[replayIndex];
-    if (!newCandle) {
-      console.error('Invalid candle at index', replayIndex);
-      replayIndex++;
-      return;
-    }
-    
-    // Add candle using update() - this preserves all existing candles (historical + new)
-    // allCandles should already have historical candles, so we just update
-    // The update() method adds the new candle while keeping all previous candles visible
-    candleSeries.update(newCandle);
-    allCandles.push(newCandle);
-    
-    // Update indicators incrementally
-    updateIndicatorsIncremental(newCandle);
-    
-    // Smooth scroll to keep latest candle visible
-    mainChart.timeScale().scrollToRealTime();
-    
-    // Update time indicator
-    updateReplayTimeIndicator();
-    
-    replayIndex++;
-  }, replaySpeed);
+  btnPlay.disabled = true;
+  btnPause.disabled = false;
+  btnStop.disabled = false;
 }
 
 function pauseReplay() {
   if (replayState !== 'PLAYING') return;
-  
+
   clearInterval(replayTimer);
   replayTimer = null;
   replayState = 'PAUSED';
-  
-  // Update UI
-  if (btnPlay) btnPlay.disabled = false;
-  if (btnPause) btnPause.disabled = true;
-  const btnStop = document.getElementById('btnStop');
-  if (btnStop) btnStop.disabled = false;
-  if (replayBtn) {
-    replayBtn.textContent = 'Replay: PAUSED';
-  }
+
+  btnPlay.disabled = false;
+  btnPause.disabled = true;
 }
 
 function stopReplay() {
   clearInterval(replayTimer);
   replayTimer = null;
+
   replayState = 'IDLE';
-  cachedIndicators = null;
-
-  // Reset to show all candles normally (fresh screen)
-  // Restore full chart with all data at current timeframe
-  allCandles = resampleCandles(raw1mData, currentTF);
   replayIndex = 0;
-  replayCandles = [];
-  replayData = [];
 
-  // Update chart with full data (fresh screen - shows all candles normally)
-  candleSeries.setData(allCandles);
+  // restore full chart normally
+  candleSeries.setData(fullDataFromBackend);
   updateAllIndicatorSeries();
-  mainChart.timeScale().fitContent();
-  
-  // Update UI
-  if (btnPlay) btnPlay.disabled = false;
-  if (btnPause) btnPause.disabled = true;
-  const btnStop = document.getElementById('btnStop');
-  if (btnStop) btnStop.disabled = false;
-  if (replayBtn) {
-    replayBtn.textContent = 'Replay: OFF';
-    replayBtn.classList.remove('active');
-  }
-  if (replayTimeIndicator) {
-    replayTimeIndicator.textContent = '';
-  }
-  
-  // Clear markers
-  candleSeries.setMarkers([]);
+
+  btnPlay.disabled = false;
+  btnPause.disabled = true;
+  btnStop.disabled = true;
 }
+
+
+// function startReplay(speed) {
+//   console.log('startReplay() called. Current state:', replayState, 'replayTimer:', replayTimer);
+//   // If already playing, do nothing
+//   if (replayTimer || replayState === 'PLAYING') {
+//     console.log('Replay already playing, returning early');
+//     return;
+//   }
+  
+//   // If in PREPARING state from a previous failed attempt, reset to IDLE
+//   if (replayState === 'PREPARING') {
+//     console.log('Resetting from PREPARING state');
+//     replayState = 'IDLE';
+//   }
+  
+//   // If paused, resume from where we left off
+//   if (replayState === 'PAUSED') {
+//     replayState = 'PLAYING';
+//     replaySpeed = speed || replaySpeed;
+    
+//     // Update UI
+//     if (btnPlay) btnPlay.disabled = true;
+//     if (btnPause) btnPause.disabled = false;
+//     const btnStop = document.getElementById('btnStop');
+//     if (btnStop) btnStop.disabled = false;
+//     if (replayBtn) {
+//       replayBtn.textContent = 'Replay: PLAYING';
+//     }
+    
+//     // Resume the timer - ensure historical candles AND indicators are still visible
+//     // Verify chart has all candles (historical + already replayed)
+//     // allCandles is the source of truth - if it has data, ensure chart displays it
+//     if (!allCandles || allCandles.length === 0) {
+//       console.warn('allCandles is empty when resuming replay');
+//       // Try to restore from replayData if available
+//       if (replayData && replayData.length > 0) {
+//         allCandles = [...replayData];
+//         candleSeries.setData(allCandles);
+//         updateAllIndicatorSeries();
+//       }
+//     } else {
+//       // Ensure chart displays current allCandles
+//       candleSeries.setData(allCandles);
+//       updateAllIndicatorSeries();
+//     }
+    
+//     // Check indicators separately - verify they are correct
+//     // Check if RSI series has data (as a proxy for all indicators)
+//     if (opts.rsi && rsiSeries) {
+//       // We can't directly check rsiSeries.data(), so just ensure indicators are updated
+//       // The updateAllIndicatorSeries() call above should have handled this
+//     } else if (opts.macd && macdSeries) {
+//       // Check MACD if RSI is not enabled
+//       // We can't directly check macdSeries.data(), so just ensure indicators are updated
+//       // The updateAllIndicatorSeries() call above should have handled this
+//     }
+    
+//     // Indicators should already be updated by updateAllIndicatorSeries() call above
+//     // Since we can't check series.data() directly, we rely on updateAllIndicatorSeries()
+//     // to ensure indicators are correctly set based on allCandles
+    
+//     // Resume the timer
+//     replayTimer = setInterval(() => {
+//       if (replayIndex >= replayCandles.length) {
+//     stopReplay();
+//         return;
+//       }
+
+//       const newCandle = replayCandles[replayIndex];
+      
+//       // Add candle using update() - this preserves all existing candles (historical + new)
+//       // allCandles should already have historical candles + previously replayed candles
+//       // The update() method adds the new candle while keeping all previous candles visible
+//       candleSeries.update(newCandle);
+//       allCandles.push(newCandle);
+      
+//       // Update indicators incrementally
+//       updateIndicatorsIncremental(newCandle);
+      
+//       // Smooth scroll to keep latest candle visible
+//       mainChart.timeScale().scrollToRealTime();
+      
+//       // Update time indicator
+//       updateReplayTimeIndicator();
+      
+//       replayIndex++;
+//     }, replaySpeed);
+    
+//     return;
+//   }
+  
+//   // Start fresh - prepare data first
+//   console.log('Preparing replay data...');
+//   const prepared = prepareReplayData();
+//   if (!prepared) {
+//     console.error('prepareReplayData() returned false');
+//     alert('Failed to prepare replay data. Please check that range and replay start time are set correctly.');
+//     return;
+//   }
+  
+//   console.log('Replay data prepared. Historical candles:', allCandles.length, 'Future candles to replay:', replayCandles ? replayCandles.length : 0);
+  
+//   // Verify that we have candles to replay
+//   if (!replayCandles || replayCandles.length === 0) {
+//     console.warn('No candles to replay - replay will end immediately');
+//     // Still allow replay to start, but it will end immediately
+//   }
+  
+//   // Now that data is prepared, set state to PLAYING
+//   // This happens after prepareReplayData() which sets state to PREPARING
+//   replaySpeed = speed || 800;
+//   replayState = 'PLAYING';
+  
+//   // CRITICAL: The prepareReplayData() should have already set historical candles
+//   // DO NOT call setData again here as it might cause flickering or clearing
+//   // The chart should already be showing historical candles from prepareReplayData()
+//   console.log('startReplay: allCandles length after prepareReplayData:', allCandles.length);
+  
+//   // Only verify indicators are updated (prepareReplayData() should have done this)
+//   if (allCandles.length > 0) {
+//     // Indicators should already be updated by prepareReplayData(), but ensure they're correct
+//     // Only update if really needed to avoid unnecessary work and potential clearing
+//     updateAllIndicatorSeries();
+//   } else {
+//     console.warn('startReplay: allCandles is empty after prepareReplayData()');
+//   }
+  
+//   // Update UI
+//   if (btnPlay) btnPlay.disabled = true;
+//   if (btnPause) btnPause.disabled = false;
+//   const btnStop = document.getElementById('btnStop');
+//   if (btnStop) btnStop.disabled = false;
+//   if (replayBtn) {
+//     replayBtn.textContent = 'Replay: PLAYING';
+//   replayBtn.classList.add('active');
+//   }
+
+//   // Start replay timer - this will add new candles while preserving historical ones
+//   // Indicators should already be updated by updateAllIndicatorSeries() call above
+//   // Since we can't check series.data() directly, we rely on updateAllIndicatorSeries()
+//   // to ensure indicators are correctly set based on allCandles
+  
+//   replayTimer = setInterval(() => {
+//     if (!replayCandles || replayIndex >= replayCandles.length) {
+//       stopReplay();
+//       return;
+//     }
+
+//     const newCandle = replayCandles[replayIndex];
+//     if (!newCandle) {
+//       console.error('Invalid candle at index', replayIndex);
+//       replayIndex++;
+//       return;
+//     }
+    
+//     // Add candle using update() - this preserves all existing candles (historical + new)
+//     // allCandles should already have historical candles, so we just update
+//     // The update() method adds the new candle while keeping all previous candles visible
+//     candleSeries.update(newCandle);
+//     allCandles.push(newCandle);
+    
+//     // Update indicators incrementally
+//     updateIndicatorsIncremental(newCandle);
+    
+//     // Smooth scroll to keep latest candle visible
+//     mainChart.timeScale().scrollToRealTime();
+    
+//     // Update time indicator
+//     updateReplayTimeIndicator();
+    
+//     replayIndex++;
+//   }, replaySpeed);
+// }
+
+// function pauseReplay() {
+//   if (replayState !== 'PLAYING') return;
+  
+//   clearInterval(replayTimer);
+//   replayTimer = null;
+//   replayState = 'PAUSED';
+  
+//   // Update UI
+//   if (btnPlay) btnPlay.disabled = false;
+//   if (btnPause) btnPause.disabled = true;
+//   const btnStop = document.getElementById('btnStop');
+//   if (btnStop) btnStop.disabled = false;
+//   if (replayBtn) {
+//     replayBtn.textContent = 'Replay: PAUSED';
+//   }
+// }
+
+// function stopReplay() {
+//   clearInterval(replayTimer);
+//   replayTimer = null;
+//   replayState = 'IDLE';
+//   cachedIndicators = null;
+
+//   // Reset to show all candles normally (fresh screen)
+//   // Restore full chart with all data at current timeframe
+//   allCandles = resampleCandles(raw1mData, currentTF);
+//   replayIndex = 0;
+//   replayCandles = [];
+//   replayData = [];
+
+//   // Update chart with full data (fresh screen - shows all candles normally)
+//   candleSeries.setData(allCandles);
+//   updateAllIndicatorSeries();
+//   mainChart.timeScale().fitContent();
+  
+//   // Update UI
+//   if (btnPlay) btnPlay.disabled = false;
+//   if (btnPause) btnPause.disabled = true;
+//   const btnStop = document.getElementById('btnStop');
+//   if (btnStop) btnStop.disabled = false;
+//   if (replayBtn) {
+//     replayBtn.textContent = 'Replay: OFF';
+//     replayBtn.classList.remove('active');
+//   }
+//   if (replayTimeIndicator) {
+//     replayTimeIndicator.textContent = '';
+//   }
+  
+//   // Clear markers
+//   candleSeries.setMarkers([]);
+// }
 
 // ========== UTILITY FUNCTIONS ==========
 function toLocalInput(date) {
