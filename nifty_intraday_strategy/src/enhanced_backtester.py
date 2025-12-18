@@ -85,6 +85,8 @@ class EnhancedBacktester(Backtester):
         # Iterate through data
         print("Running backtest...")
         total_bars = len(df)
+        prev_date = None
+        
         for i in range(len(df)):
             if (i + 1) % 10000 == 0:
                 print(f"  Processed {i+1}/{total_bars} bars ({100*(i+1)/total_bars:.1f}%)")
@@ -93,8 +95,28 @@ class EnhancedBacktester(Backtester):
             current_time = row['date']
             current_date = current_time.date()
             
+            # Check if date changed - close any open position from previous day
+            if current_trade is not None and prev_date is not None and current_date != prev_date:
+                # Date changed, force exit any open position at previous day's close
+                prev_row = df.iloc[i-1]
+                exit_result = self.execute_exit(prev_row['close'], prev_row['date'], 'End of Day')
+                if exit_result:
+                    trade = {
+                        **current_trade,
+                        **exit_result
+                    }
+                    trade['pnl'] = exit_result['pnl']
+                    trade['return_pct'] = (exit_result['pnl'] / (current_trade['entry_price'] * current_trade['quantity'])) * 100
+                    self.trades.append(trade)
+                    current_trade = None
+                    # Update equity
+                    self.equity = self.cash + (self.position * prev_row['close'] if self.position > 0 else 0)
+            
             # Reset daily state
             self.strategy.reset_daily_state(current_date)
+            
+            # Update prev_date for next iteration
+            prev_date = current_date
             
             # Skip if missing indicators
             if pd.isna(row['vwap']) or pd.isna(row['atr']):

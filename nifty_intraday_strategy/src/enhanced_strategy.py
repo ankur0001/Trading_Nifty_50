@@ -66,6 +66,7 @@ class EnhancedStrategy(ORBStrategy):
         self.rsi_oversold = config.get('rsi_oversold', 30)
         self.rsi_overbought = config.get('rsi_overbought', 70)
         self.macd_threshold = config.get('macd_threshold', 0)
+        self.min_score = config.get('min_score', 2)  # Minimum score to enter trade
         
         # Multi-timeframe settings
         self.mtf_timeframes = config.get('mtf_timeframes', ['15min', '1H', '1D'])
@@ -327,7 +328,8 @@ class EnhancedStrategy(ORBStrategy):
         
         # Decision logic
         # Require minimum score and ORB condition
-        min_score = 2
+        # Use configurable min_score from config
+        min_score = self.min_score
         
         if long_orb and bullish_score >= min_score and bullish_score > bearish_score:
             return 'LONG'

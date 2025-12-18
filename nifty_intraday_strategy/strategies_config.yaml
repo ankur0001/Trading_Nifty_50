@@ -1,0 +1,50 @@
+# Strategy Configuration - Enable/Disable Strategies
+# Set enabled: true to run the strategy, false to skip it
+
+strategies:
+  holy_grail:
+    enabled: true
+    description: "Holy Grail Strategy (EMA pullback in strong trend)"
+  
+  triangle_breakout:
+    enabled: false  # Disabled - takes too long (34+ hours)
+    description: "Triangle Breakout with Confirmation (5m only)"
+  
+  third_candle_orb:
+    enabled: true
+    description: "Range Breakout of 3rd 5-min Candle"
+  
+  gap_open:
+    enabled: true
+    description: "Gap Open Strategy (2nd 5m candle)"
+  
+  big_candle_breakout:
+    enabled: true
+    description: "Big Candle Breakout Strategy"
+  
+  flag_breakout:
+    enabled: true
+    description: "Flag Breakout"
+  
+  cpr_20ema:
+    enabled: true
+    description: "CPR + 20 EMA Strategy"
+  
+  fifteen_min_breakout:
+    enabled: true
+    description: "15-Minute Breakout Strategy"
+  
+  last_30min_range:
+    enabled: true
+    description: "Last 30-min Range of Previous Day"
+  
+  ema20_mean_reversion:
+    enabled: true
+    description: "20 EMA Mean Reversion (range days only)"
+
+# Cache settings
+cache:
+  enabled: true  # Enable/disable caching
+  cache_dir: "cache/strategy_results"  # Directory to store cached results
+  cache_expiry_days: 7  # Cache expires after 7 days (set to 0 for no expiry)
+

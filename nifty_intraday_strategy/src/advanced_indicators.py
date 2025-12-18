@@ -212,6 +212,51 @@ def calculate_stochastic(df: pd.DataFrame, k_period: int = 14,
     return result
 
 
+def calculate_adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    """
+    Calculate Average Directional Index (ADX).
+    
+    Args:
+        df: DataFrame with OHLC data
+        period: Period for ADX calculation (default: 14)
+    
+    Returns:
+        Series with ADX values (0-100)
+    """
+    # Calculate True Range
+    df = df.copy()
+    df['prev_close'] = df['close'].shift(1)
+    tr1 = df['high'] - df['low']
+    tr2 = abs(df['high'] - df['prev_close'])
+    tr3 = abs(df['low'] - df['prev_close'])
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    
+    # Calculate Directional Movement
+    df['plus_dm'] = np.where(
+        (df['high'] - df['high'].shift(1)) > (df['low'].shift(1) - df['low']),
+        np.maximum(df['high'] - df['high'].shift(1), 0),
+        0
+    )
+    df['minus_dm'] = np.where(
+        (df['low'].shift(1) - df['low']) > (df['high'] - df['high'].shift(1)),
+        np.maximum(df['low'].shift(1) - df['low'], 0),
+        0
+    )
+    
+    # Smooth TR and DM
+    atr = tr.rolling(window=period, min_periods=1).mean()
+    plus_di = 100 * (df['plus_dm'].rolling(window=period, min_periods=1).mean() / atr)
+    minus_di = 100 * (df['minus_dm'].rolling(window=period, min_periods=1).mean() / atr)
+    
+    # Calculate DX
+    dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di + 1e-10)
+    
+    # Calculate ADX as smoothed DX
+    adx = dx.rolling(window=period, min_periods=1).mean()
+    
+    return adx
+
+
 def get_all_indicators(df: pd.DataFrame, config: Optional[dict] = None) -> pd.DataFrame:
     """
     Calculate all technical indicators.
@@ -233,6 +278,8 @@ def get_all_indicators(df: pd.DataFrame, config: Optional[dict] = None) -> pd.Da
     indicators['sma_50'] = calculate_sma(df, config.get('sma_50_period', 50))
     indicators['ema_12'] = calculate_ema(df, config.get('ema_fast', 12))
     indicators['ema_26'] = calculate_ema(df, config.get('ema_slow', 26))
+    indicators['ema_20'] = calculate_ema(df, config.get('ema_20_period', 20))
+    indicators['ema_50'] = calculate_ema(df, config.get('ema_50_period', 50))
     
     # RSI
     indicators['rsi'] = calculate_rsi(df, config.get('rsi_period', 14))
@@ -261,9 +308,12 @@ def get_all_indicators(df: pd.DataFrame, config: Optional[dict] = None) -> pd.Da
     
     # Stochastic
     stoch = calculate_stochastic(df,
-                                 config.get('stoch_k', 14),
-                                 config.get('stoch_d', 3))
+                                config.get('stoch_k', 14),
+                                config.get('stoch_d', 3))
     indicators = pd.concat([indicators, stoch], axis=1)
+    
+    # ADX
+    indicators['adx'] = calculate_adx(df, config.get('adx_period', 14))
     
     return indicators
 
